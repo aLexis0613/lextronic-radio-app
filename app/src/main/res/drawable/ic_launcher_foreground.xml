@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- egyszerű rádió-ikon: doboz, hangszóró-rács, kijelző, antenna -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFB300" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M40,40 L66,30" />
+    <path android:fillColor="#FFFFB300"
+        android:pathData="M32,42 h44 a6,6 0 0 1 6,6 v22 a6,6 0 0 1 -6,6 h-44 a6,6 0 0 1 -6,-6 v-22 a6,6 0 0 1 6,-6z" />
+    <path android:fillColor="#FF111214"
+        android:pathData="M44,59 m-9,0 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0" />
+    <path android:fillColor="#FF111214"
+        android:pathData="M58,49 h18 v8 h-18z" />
+    <path android:fillColor="#FF111214"
+        android:pathData="M58,62 h18 v3 h-18z M58,68 h18 v3 h-18z" />
+</vector>
