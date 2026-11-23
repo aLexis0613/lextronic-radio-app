@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Metadata
+import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -12,6 +14,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
@@ -49,6 +52,26 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)          // fülhallgató kihúzásakor megáll
             .setWakeMode(C.WAKE_MODE_NETWORK)          // lezárt képernyőnél is fut a WiFi/mobilnet
             .build()
+
+        // A MediaItem saját címe felülírná a stream ICY-címét, ezért az érkező számcímet
+        // beleírjuk a MediaItem-be: így az app, az értesítés és a lezárási képernyő is látja.
+        player.addListener(object : Player.Listener {
+            override fun onMetadata(metadata: Metadata) {
+                for (i in 0 until metadata.length()) {
+                    val e = metadata.get(i)
+                    if (e !is IcyInfo) continue
+                    val cur = player.currentMediaItem ?: return
+                    val station = cur.mediaMetadata.station?.toString()
+                        ?: cur.mediaMetadata.artist?.toString() ?: ""
+                    val newTitle = e.title?.trim().orEmpty().ifBlank { station }
+                    if (cur.mediaMetadata.title?.toString() == newTitle) return
+                    player.replaceMediaItem(
+                        player.currentMediaItemIndex,
+                        cur.buildUpon().setMediaMetadata(cur.mediaMetadata.buildUpon().setTitle(newTitle).build()).build()
+                    )
+                }
+            }
+        })
 
         // hardveres (DSP) dekódolás, ha a telefon tudja: a processzor közben alhat -> kevesebb fogyasztás.
         // Ha a telefon vagy a formátum nem támogatja, az ExoPlayer magától a normál dekódolást használja.

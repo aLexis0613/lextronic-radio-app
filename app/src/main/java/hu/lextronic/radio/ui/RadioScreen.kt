@@ -45,6 +45,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -105,90 +110,97 @@ private fun RadioStationMenu(vm: MainViewModel, r: RadioStation) {
 
 @Composable
 private fun NowOnRadio(vm: MainViewModel, st: RadioState) {
-    Card(
-        Modifier.fillMaxWidth().padding(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            // a rádió kijelzőjét idéző panel
-            OledPanel {
-                val pos = if (st.count > 0) "%02d/%02d".format(st.idx + 1, st.count) else ""
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "LEXTRONIC  $pos", fontFamily = FontFamily.Monospace, fontSize = 11.sp,
-                        color = Amber.copy(alpha = 0.55f), modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        if (st.muted) "NÉMA" else "VOL %02d".format(st.vol), fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp, color = Amber.copy(alpha = 0.55f)
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                OledLine(st.name.ifBlank { "—" }, bright = true, size = 20, bold = true)
-                Spacer(Modifier.height(2.dp))
-                OledLine(st.title.ifBlank { st.genre.ifBlank { " " } }, bright = st.title.isNotBlank(), size = 15)
-                Spacer(Modifier.height(8.dp))
-                val info = listOf(st.status, if (st.kbps > 0) "${st.codec} ${st.kbps}k" else st.codec)
-                    .filter { it.isNotBlank() }.joinToString(" · ")
-                OledLine(info.uppercase().ifBlank { " " }, bright = false, size = 11)
-                Spacer(Modifier.height(8.dp))
-                // hangerő-csík, mint a kijelzőn
-                Row(Modifier.fillMaxWidth().height(6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    for (i in 1..15) {
-                        Box(
-                            Modifier.weight(1f).fillMaxHeight().background(
-                                if (!st.muted && i <= st.vol) Amber else Amber.copy(alpha = 0.12f)
-                            )
-                        )
-                    }
+    val cur = vm.radioStations.getOrNull(st.idx)?.let { vm.radioToStation(it) }
+    // ha a kedvencek közt megvan ugyanez az adó, a logóját is mutatjuk
+    val logo = cur?.let { c -> vm.favorites.firstOrNull { it.url == c.url }?.favicon }.orEmpty()
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = Amber, fontWeight = FontWeight.Bold)) { append("LEXTRONIC ") }
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("RADIO") }
+            },
+            style = MaterialTheme.typography.titleMedium, letterSpacing = 2.sp,
+            modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
+        )
+
+        // fejléc-kártya: logó, név, cím, címkék
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StationLogo(logo, 52)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(st.name.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (st.title.isNotBlank()) Text(st.title, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (st.codec.isNotBlank()) InfoChip(st.codec.uppercase())
+                    if (st.kbps > 0) InfoChip("${st.kbps} kbps")
+                    if (st.status.isNotBlank()) InfoChip(st.status)
                 }
             }
-
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                val cur = vm.radioStations.getOrNull(st.idx)?.let { vm.radioToStation(it) }
-                IconButton(onClick = { cur?.let { vm.toggleFav(it) } }, enabled = cur != null) {
-                    val fav = cur != null && vm.isFav(cur)
-                    Icon(
-                        if (fav) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = "Kedvencekhez",
-                        tint = if (fav) Amber else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                FilledTonalIconButton(onClick = { vm.radioPrev() }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Filled.SkipPrevious, contentDescription = "Előző")
-                }
-                Spacer(Modifier.width(16.dp))
-                FilledIconButton(onClick = { vm.radioMute() }, modifier = Modifier.size(60.dp)) {
-                    Icon(if (st.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Némítás")
-                }
-                Spacer(Modifier.width(16.dp))
-                FilledTonalIconButton(onClick = { vm.radioNext() }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Filled.SkipNext, contentDescription = "Következő")
-                }
-                Spacer(Modifier.width(8.dp))
-                // a rádión szóló adó a telefonon is (pl. ha elindulsz otthonról)
-                IconButton(onClick = { cur?.let { vm.playOnPhone(it) } }, enabled = cur != null) {
-                    Icon(Icons.Filled.PhoneAndroid, contentDescription = "Lejátszás a telefonon",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            // a csúszkát a rádió felől érkező érték csak akkor írja felül, ha épp nem húzzuk
-            var dragV by remember { mutableStateOf<Float?>(null) }
-            val v = dragV ?: st.vol.toFloat()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Hangerő", style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(64.dp))
-                Slider(
-                    value = v,
-                    onValueChange = { dragV = it },
-                    onValueChangeFinished = { dragV?.let { vm.radioVol(it.roundToInt()) }; dragV = null },
-                    valueRange = 0f..15f, steps = 14,
-                    modifier = Modifier.weight(1f)
+            IconButton(onClick = { cur?.let { vm.toggleFav(it) } }, enabled = cur != null) {
+                val fav = cur != null && vm.isFav(cur)
+                Icon(
+                    if (fav) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = "Kedvencekhez",
+                    tint = if (fav) Amber else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(if (st.muted) "néma" else v.roundToInt().toString(), style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.width(40.dp).padding(start = 8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        // a rádió kijelzője
+        OledPanel {
+            val pos = if (st.count > 0) "%02d/%02d".format(st.idx + 1, st.count) else ""
+            OledLine("$pos  ${if (st.muted) "NÉMA" else "VOL %02d".format(st.vol)}  ${st.status.uppercase()}", bright = false, size = 10)
+            OledLine(st.name.ifBlank { "—" }, bright = true, size = 18, bold = true)
+            OledLine(st.title.ifBlank { st.genre.ifBlank { " " } }, bright = st.title.isNotBlank(), size = 12)
+            OledBar(if (st.muted) 0 else st.vol, 15)
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PadButton(Modifier.weight(1f), onClick = { vm.radioPrev() }) { Icon(Icons.Filled.SkipPrevious, "Előző") }
+            PadButton(Modifier.weight(1f), onClick = { vm.radioNext() }) { Icon(Icons.Filled.SkipNext, "Következő") }
+            PadButton(Modifier.weight(1f), onClick = { vm.radioVol(st.vol - 1) }) { Text("−", style = MaterialTheme.typography.titleLarge) }
+            PadButton(Modifier.weight(1f), onClick = { vm.radioVol(st.vol + 1) }) { Text("+", style = MaterialTheme.typography.titleLarge) }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        // a csúszkát a rádió felől érkező érték csak akkor írja felül, ha épp nem húzzuk
+        var dragV by remember { mutableStateOf<Float?>(null) }
+        val v = dragV ?: st.vol.toFloat()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Hangerő ${v.roundToInt()}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(78.dp))
+            Slider(
+                value = v,
+                onValueChange = { dragV = it },
+                onValueChangeFinished = { dragV?.let { vm.radioVol(it.roundToInt()) }; dragV = null },
+                valueRange = 0f..15f, steps = 14,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            PadButton(Modifier.width(92.dp).height(40.dp), onClick = { vm.radioMute() }) {
+                Text(if (st.muted) "Hang be" else "Némítás", style = MaterialTheme.typography.labelLarge,
+                    color = if (st.muted) Amber else MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        if (cur != null) {
+            Spacer(Modifier.height(4.dp))
+            PadButton(Modifier.fillMaxWidth().height(44.dp), onClick = { vm.playOnPhone(cur) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.PhoneAndroid, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ez szóljon a telefonon", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

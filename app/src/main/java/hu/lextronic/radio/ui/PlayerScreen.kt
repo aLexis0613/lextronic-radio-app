@@ -100,23 +100,25 @@ fun FullPlayer(vm: MainViewModel) {
                 s.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 maxLines = 1, modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
-            val sub = s.subtitle()
-            if (sub.isNotBlank()) Text(
-                sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (s.codec.isNotBlank()) InfoChip(s.codec.uppercase())
+                if (s.bitrate > 0) InfoChip("${s.bitrate} kbps")
+                if (s.country.isNotBlank()) InfoChip(s.country)
+            }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
+            // a rádió kijelzőjének stílusában: állapot, előadó, cím
             OledPanel {
                 val state = when {
                     vm.buffering -> "PUFFERELÉS…"
-                    vm.isPlaying -> "▶ SZÓL"
+                    vm.isPlaying -> "▶ SZÓL  ${s.codec.uppercase()} ${if (s.bitrate > 0) "${s.bitrate}k" else ""}"
                     else -> "❚❚ MEGÁLLÍTVA"
                 }
-                OledLine(state, bright = false, size = 12)
-                Spacer(Modifier.height(6.dp))
-                OledLine(artist.ifBlank { if (title.isBlank()) s.name else " " }, bright = false, size = 15)
-                OledLine(title.ifBlank { "nincs számcím" }, bright = title.isNotBlank(), size = 18, bold = true)
+                OledLine(state, bright = false, size = 10)
+                OledLine(title.ifBlank { s.name }, bright = true, size = 18, bold = true)
+                OledLine(artist.ifBlank { if (title.isBlank()) "nincs számcím" else s.name }, bright = artist.isNotBlank(), size = 12)
+                OledBar(if (vm.isPlaying) 15 else if (vm.buffering) 7 else 0, 15)
             }
 
             Spacer(Modifier.weight(1f))

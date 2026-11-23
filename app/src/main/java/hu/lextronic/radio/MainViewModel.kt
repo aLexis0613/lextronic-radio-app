@@ -96,16 +96,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var toast by mutableStateOf<String?>(null)
 
     private val listener = object : Player.Listener {
-        override fun onIsPlayingChanged(p: Boolean) { isPlaying = p }
-        override fun onPlaybackStateChanged(s: Int) {
-            buffering = s == Player.STATE_BUFFERING
-            if (s == Player.STATE_READY) retries = 0
-        }
-        override fun onMediaMetadataChanged(m: MediaMetadata) {
-            // a stream ICY-címe (előadó – szám) felülírja a címet; ha az állomásnév, nem írjuk ki kétszer
-            val t = m.title?.toString().orEmpty()
-            nowTitle = if (t == playing?.name) "" else t
-        }
+        // minden változásnál a lejátszó teljes állapotát átvesszük (megbízhatóbb, mint az egyes események)
+        override fun onEvents(player: Player, events: Player.Events) { syncFrom(player) }
         override fun onPlayerError(error: PlaybackException) {
             val c = controller ?: return
             if (playing != null && retries < 3) {
@@ -120,6 +112,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun syncFrom(p: Player) {
+        isPlaying = p.isPlaying
+        buffering = p.playbackState == Player.STATE_BUFFERING && p.playWhenReady
+        if (p.playbackState == Player.STATE_READY) retries = 0
+        val t = p.mediaMetadata.title?.toString().orEmpty()
+        nowTitle = if (t == playing?.name) "" else t
+    }
+
     init {
         val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
         val future = MediaController.Builder(app, token).buildAsync()
@@ -129,17 +129,19 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 controller = c
                 c.addListener(listener)
                 // ha a háttérben már szólt valami, visszaállítjuk a mini-lejátszót
-                if (c.mediaItemCount > 0) {
-                    playing = store.last
-                    isPlaying = c.isPlaying
-                    val t = c.mediaMetadata.title?.toString().orEmpty()
-                    nowTitle = if (t == playing?.name) "" else t
-                }
+                if (c.mediaItemCount > 0) playing = store.last
+                syncFrom(c)
             } catch (e: Exception) { toast = "A lejátszó nem indult el" }
         }, ContextCompat.getMainExecutor(app))
 
         try { cm.registerDefaultNetworkCallback(netCb) } catch (e: Exception) { }
         radioLoop()
+        viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                if (foreground) controller?.let { syncFrom(it) }
+            }
+        }
     }
 
     /** A rádiót csak WiFi-n (vagy Etherneten) keressük — mobilneten fölösleges és akkut eszik. */
@@ -166,6 +168,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val meta = MediaMetadata.Builder()
             .setTitle(s.name)
             .setArtist(s.name)
+            .setStation(s.name)
             .apply { if (s.favicon.startsWith("http")) setArtworkUri(Uri.parse(s.favicon)) }
             .build()
         val item = MediaItem.Builder()
@@ -182,8 +185,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Élő adásnál a szünet = leállítás; folytatáskor friss streamet kérünk, nem a régi puffert. */
     fun togglePause() {
         val c = controller ?: return
-        if (c.isPlaying || c.playWhenReady) c.stop()
-        else { retries = 0; c.prepare(); c.play() }
+        if (c.isPlaying || (c.playWhenReady && c.playbackState != Player.STATE_IDLE)) {
+            c.pause(); c.stop()
+        } else { retries = 0; c.prepare(); c.play() }
+        syncFrom(c)
     }
 
     /** Előző/következő kedvenc (körbe). Ha a mostani nincs a kedvencek közt, az elsővel kezd. */

@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -117,21 +122,43 @@ fun SendToRadioButton(vm: MainViewModel, s: Station) {
     }
 }
 
-/** A rádió kijelzőjét idéző panel: fekete alap, borostyán keret. */
+/**
+ * Az SSD1322 (256×64) kijelzőt idéző képernyő: 4:1 arány, fekete alap,
+ * borostyán betűk és halvány képpontrács.
+ */
 @Composable
 fun OledPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(
+    val shape = RoundedCornerShape(10.dp)
+    Box(
         modifier.fillMaxWidth()
-            .clip(shape)
-            .background(Color(0xFF050505))
-            .border(1.dp, Amber.copy(alpha = 0.35f), shape)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        content = content
-    )
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF16150F))
+            .border(1.dp, Color(0xFF2E2A1E), RoundedCornerShape(16.dp))
+            .padding(10.dp)
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .aspectRatio(4f)
+                .clip(shape)
+                .background(Color.Black)
+                .drawWithContent {
+                    drawContent()
+                    // képpontrács: 64 sor, 256 oszlop – a pontok közti sötét rés adja az OLED-hatást
+                    val step = size.height / 64f
+                    val gap = Color.Black.copy(alpha = 0.45f)
+                    var y = 0f
+                    while (y < size.height) { drawLine(gap, Offset(0f, y), Offset(size.width, y), 1f); y += step }
+                    var x = 0f
+                    while (x < size.width) { drawLine(gap, Offset(x, 0f), Offset(x, size.height), 1f); x += step }
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            content = content
+        )
+    }
 }
 
-/** Egy sor a panelen; ha nem fér ki, lassan fut, mint a rádión. */
+/** Egy sor a kijelzőn; ha nem fér ki, lassan fut, mint a rádión. level: 0..3 fényerő (az SSD1322 szürkeárnyalatai). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OledLine(text: String, bright: Boolean = true, size: Int = 15, bold: Boolean = false) {
@@ -139,11 +166,45 @@ fun OledLine(text: String, bright: Boolean = true, size: Int = 15, bold: Boolean
         text,
         fontFamily = FontFamily.Monospace,
         fontSize = size.sp,
+        lineHeight = size.sp,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
-        color = if (bright) Amber else Amber.copy(alpha = 0.55f),
+        color = if (bright) OledAmber else OledAmber.copy(alpha = 0.5f),
         maxLines = 1,
+        softWrap = false,
         modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
     )
+}
+
+/** Szegmenses csík a kijelző aljára (hangerő / állapot). */
+@Composable
+fun OledBar(value: Int, max: Int) {
+    Row(Modifier.fillMaxWidth().height(5.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (i in 1..max) {
+            Box(Modifier.weight(1f).fillMaxHeight().background(if (i <= value) OledAmber else OledAmber.copy(alpha = 0.12f)))
+        }
+    }
+}
+
+/** Kis címke-chip (AAC, 128 kbps, WiFi …), mint a weblejátszón. */
+@Composable
+fun InfoChip(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.border(1.dp, Color(0xFF3A3628), RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 3.dp)
+    )
+}
+
+/** Nagy, lapos vezérlőgomb (◀ ▶ − +), a weblejátszó gombjai mintájára. */
+@Composable
+fun PadButton(modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        modifier.height(56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF16150F))
+            .border(1.dp, Color(0xFF2E2A1E), RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { content() }
 }
 
 /** Nagy állomáslogó a teljes lejátszóhoz. */

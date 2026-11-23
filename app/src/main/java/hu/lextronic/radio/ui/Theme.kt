@@ -5,7 +5,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val Amber = Color(0xFFFFB300)
+val Amber = Color(0xFFFFC93C)
+/** Az OLED kijelző sárgája. */
+val OledAmber = Color(0xFFFFD54A)
 
 private val scheme = darkColorScheme(
     primary = Amber,
@@ -17,8 +19,8 @@ private val scheme = darkColorScheme(
     onSecondaryContainer = Color(0xFFF2E2C2),
     background = Color(0xFF000000),
     surface = Color(0xFF000000),
-    surfaceContainer = Color(0xFF1B1C1F),
-    surfaceContainerHigh = Color(0xFF232428),
+    surfaceContainer = Color(0xFF16150F),
+    surfaceContainerHigh = Color(0xFF1E1C15),
     surfaceVariant = Color(0xFF2A2B2F),
     onSurfaceVariant = Color(0xFFB9B9C0),
 )
