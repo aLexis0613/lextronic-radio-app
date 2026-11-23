@@ -92,6 +92,15 @@ class Store(ctx: Context) {
         get() = sp.getString("country", "HU").takeIf { it != "ALL" }
         set(v) { sp.edit().putString("country", v ?: "ALL").apply() }
 
+    var eqGains: FloatArray
+        get() = sp.getString("eq", null)?.split(',')?.mapNotNull { it.toFloatOrNull() }
+            ?.takeIf { it.size == 5 }?.toFloatArray() ?: FloatArray(5)
+        set(v) { sp.edit().putString("eq", v.joinToString(",")).apply() }
+
+    var eqOn: Boolean
+        get() = sp.getBoolean("eqOn", false)
+        set(v) { sp.edit().putBoolean("eqOn", v).apply() }
+
     var last: Station?
         get() = sp.getString("last", null)?.let { try { Station.fromJson(JSONObject(it)) } catch (e: Exception) { null } }
         set(v) { sp.edit().putString("last", v?.toJson()?.toString()).apply() }

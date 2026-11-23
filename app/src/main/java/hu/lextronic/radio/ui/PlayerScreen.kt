@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -34,6 +35,10 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -55,6 +60,8 @@ fun FullPlayer(vm: MainViewModel) {
     val s = vm.playing ?: return
     val (artist, title) = vm.songParts
     val fav = vm.isFav(s)
+    var showEq by remember { mutableStateOf(false) }
+    if (showEq) EqDialog(vm) { showEq = false }
 
     Box(
         Modifier.fillMaxSize()
@@ -89,12 +96,17 @@ fun FullPlayer(vm: MainViewModel) {
                     "MOST SZÓL", style = MaterialTheme.typography.labelLarge, color = Amber,
                     textAlign = TextAlign.Center, modifier = Modifier.weight(1f)
                 )
-                if (vm.radioOnline) SendToRadioButton(vm, s) else Spacer(Modifier.width(48.dp))
+                IconButton(onClick = { showEq = true }) {
+                    Icon(Icons.Filled.Tune, contentDescription = "Hangszín", tint = if (vm.eqOn) Amber else Color.White)
+                }
+                if (vm.radioOnline) SendToRadioButton(vm, s)
             }
 
-            Spacer(Modifier.weight(0.6f))
-            BigLogo(s.favicon, 240)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.weight(0.4f))
+            BigLogo(s.favicon, 170)
+            Spacer(Modifier.height(14.dp))
+            Spectrum(vm.isPlaying)
+            Spacer(Modifier.height(14.dp))
 
             Text(
                 s.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,

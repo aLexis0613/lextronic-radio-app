@@ -53,6 +53,25 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             return if (i > 0) t.substring(0, i).trim() to t.substring(i + 3).trim() else "" to t
         }
 
+    // ---------- hangszín ----------
+    val eqGains = mutableStateListOf<Float>().apply { addAll(store.eqGains.toList()) }
+    var eqOn by mutableStateOf(store.eqOn)
+        private set
+
+    private fun applyEq() {
+        AudioFx.setGains(eqGains.toFloatArray(), eqOn)
+        store.eqGains = eqGains.toFloatArray(); store.eqOn = eqOn
+    }
+
+    fun setEqBand(i: Int, db: Float) { eqGains[i] = db; if (!eqOn) eqOn = true; applyEq() }
+    fun setEqEnabled(on: Boolean) { eqOn = on; applyEq() }
+
+    fun eqPreset(g: FloatArray) {
+        for (i in 0 until 5) eqGains[i] = g[i]
+        eqOn = g.any { it != 0f }
+        applyEq()
+    }
+
     // ---------- keresés ----------
     var query by mutableStateOf("")
     var country by mutableStateOf(store.country)          // null = minden ország
@@ -121,6 +140,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        AudioFx.setGains(eqGains.toFloatArray(), eqOn)
         val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
         val future = MediaController.Builder(app, token).buildAsync()
         future.addListener({

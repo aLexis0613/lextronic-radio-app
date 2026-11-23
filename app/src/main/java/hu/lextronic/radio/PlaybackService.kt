@@ -1,17 +1,21 @@
 package hu.lextronic.radio
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Metadata
 import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
@@ -39,7 +43,18 @@ class PlaybackService : MediaSessionService() {
         val load = DefaultLoadControl.Builder()
             .setBufferDurationsMs(20_000, 90_000, 2_500, 5_000)
             .build()
-        val player = ExoPlayer.Builder(this)
+        // saját hangfeldolgozó a hangútban: hangszínszabályzó + spektrum.
+        // (Emiatt a hardveres „offload” dekódolás nem használható — a különbség kicsi.)
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setAudioProcessors(arrayOf<AudioProcessor>(LxAudioProcessor()))
+                .setEnableFloatOutput(false)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .build()
+        }
+        val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(sources)
             .setLoadControl(load)
             .setAudioAttributes(
@@ -72,16 +87,6 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         })
-
-        // hardveres (DSP) dekódolás, ha a telefon tudja: a processzor közben alhat -> kevesebb fogyasztás.
-        // Ha a telefon vagy a formátum nem támogatja, az ExoPlayer magától a normál dekódolást használja.
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setAudioOffloadPreferences(
-                TrackSelectionParameters.AudioOffloadPreferences.Builder()
-                    .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                    .build()
-            )
-            .build()
 
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
