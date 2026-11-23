@@ -1,6 +1,10 @@
 package hu.lextronic.radio.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,11 +33,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import hu.lextronic.radio.MainViewModel
 import hu.lextronic.radio.Station
@@ -106,6 +113,56 @@ fun SendToRadioButton(vm: MainViewModel, s: Station) {
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(text = { Text("Lejátszás a rádión") }, onClick = { menuOpen = false; vm.previewOnRadio(s) })
             DropdownMenuItem(text = { Text("Mentés a rádió listájába") }, onClick = { menuOpen = false; vm.addToRadio(s) })
+        }
+    }
+}
+
+/** A rádió kijelzőjét idéző panel: fekete alap, borostyán keret. */
+@Composable
+fun OledPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier.fillMaxWidth()
+            .clip(shape)
+            .background(Color(0xFF050505))
+            .border(1.dp, Amber.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        content = content
+    )
+}
+
+/** Egy sor a panelen; ha nem fér ki, lassan fut, mint a rádión. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun OledLine(text: String, bright: Boolean = true, size: Int = 15, bold: Boolean = false) {
+    Text(
+        text,
+        fontFamily = FontFamily.Monospace,
+        fontSize = size.sp,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        color = if (bright) Amber else Amber.copy(alpha = 0.55f),
+        maxLines = 1,
+        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE)
+    )
+}
+
+/** Nagy állomáslogó a teljes lejátszóhoz. */
+@Composable
+fun BigLogo(url: String, size: Int) {
+    val fallback = rememberVectorPainter(Icons.Filled.Radio)
+    Box(
+        Modifier.size(size.dp).clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        if (url.startsWith("http")) {
+            AsyncImage(
+                model = url, contentDescription = null,
+                modifier = Modifier.size(size.dp), contentScale = ContentScale.Fit,
+                error = fallback, fallback = fallback
+            )
+        } else {
+            Icon(Icons.Filled.Radio, null, Modifier.size((size / 2).dp), tint = Amber.copy(alpha = 0.8f))
         }
     }
 }

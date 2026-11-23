@@ -1,6 +1,14 @@
 package hu.lextronic.radio.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +25,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import hu.lextronic.radio.MainViewModel
@@ -49,6 +59,9 @@ fun LextronicApp(vm: MainViewModel) {
         vm.toast?.let { snack.showSnackbar(it); vm.toast = null }
     }
 
+    BackHandler(enabled = vm.playerOpen) { vm.playerOpen = false }
+
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
@@ -79,15 +92,25 @@ fun LextronicApp(vm: MainViewModel) {
             }
         }
     }
+    // a teljes lejátszó alulról csúszik fel, mindent eltakar
+    AnimatedVisibility(
+        visible = vm.playerOpen && vm.playing != null,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut()
+    ) { FullPlayer(vm) }
+    }
 }
 
-/** A telefonon szóló állomás, a navigációs sáv fölött. */
+/** A telefonon szóló állomás, a navigációs sáv fölött. Koppintásra vagy felfelé húzásra nyílik a teljes lejátszó. */
 @Composable
 fun MiniPlayer(vm: MainViewModel) {
     val s = vm.playing ?: return
+    val fav = vm.isFav(s)
     Row(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable { vm.playerOpen = true }
+            .pointerInput(Unit) { detectVerticalDragGestures { _, dy -> if (dy < -20) vm.playerOpen = true } }
             .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -103,7 +126,15 @@ fun MiniPlayer(vm: MainViewModel) {
             }
             Text(
                 sub, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall,
+                color = if (vm.nowTitle.isNotBlank() && !vm.buffering) Amber else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = { vm.toggleFav(s) }) {
+            Icon(
+                if (fav) Icons.Filled.Star else Icons.Filled.StarBorder,
+                contentDescription = "Kedvenc",
+                tint = if (fav) Amber else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         if (vm.buffering) {

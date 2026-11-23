@@ -42,6 +42,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var nowTitle by mutableStateOf("")
         private set
     private var retries = 0
+    /** A teljes képernyős lejátszó nyitva van-e. */
+    var playerOpen by mutableStateOf(false)
+
+    /** Az ICY-cím szétbontva: „Előadó - Cím” -> (előadó, cím). */
+    val songParts: Pair<String, String>
+        get() {
+            val t = nowTitle.trim()
+            val i = t.indexOf(" - ")
+            return if (i > 0) t.substring(0, i).trim() to t.substring(i + 3).trim() else "" to t
+        }
 
     // ---------- keresés ----------
     var query by mutableStateOf("")
@@ -176,7 +186,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         else { retries = 0; c.prepare(); c.play() }
     }
 
+    /** Előző/következő kedvenc (körbe). Ha a mostani nincs a kedvencek közt, az elsővel kezd. */
+    fun playAdjacent(d: Int) {
+        if (favorites.isEmpty()) { toast = "Nincs kedvenc állomás"; return }
+        val i = favorites.indexOfFirst { it.url == playing?.url }
+        val j = if (i < 0) 0 else (i + d + favorites.size) % favorites.size
+        playOnPhone(favorites[j])
+    }
+
     fun stopPhone() {
+        playerOpen = false
         controller?.run { stop(); clearMediaItems() }
         playing = null
         nowTitle = ""

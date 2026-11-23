@@ -1,6 +1,8 @@
 package hu.lextronic.radio.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -41,10 +46,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.lextronic.radio.MainViewModel
 import hu.lextronic.radio.RadioState
 import hu.lextronic.radio.RadioStation
@@ -100,20 +107,54 @@ private fun RadioStationMenu(vm: MainViewModel, r: RadioStation) {
 private fun NowOnRadio(vm: MainViewModel, st: RadioState) {
     Card(
         Modifier.fillMaxWidth().padding(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("LEXTRONIC RÁDIÓ · ${vm.radioHost}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(6.dp))
-            Text(st.name.ifBlank { "—" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (st.title.isNotBlank()) Text(st.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val info = listOf(st.status, if (st.kbps > 0) "${st.codec} ${st.kbps} kbps" else st.codec)
-                .filter { it.isNotBlank() }.joinToString(" · ")
-            if (info.isNotBlank()) Text(info, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // a rádió kijelzőjét idéző panel
+            OledPanel {
+                val pos = if (st.count > 0) "%02d/%02d".format(st.idx + 1, st.count) else ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "LEXTRONIC  $pos", fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                        color = Amber.copy(alpha = 0.55f), modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (st.muted) "NÉMA" else "VOL %02d".format(st.vol), fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp, color = Amber.copy(alpha = 0.55f)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                OledLine(st.name.ifBlank { "—" }, bright = true, size = 20, bold = true)
+                Spacer(Modifier.height(2.dp))
+                OledLine(st.title.ifBlank { st.genre.ifBlank { " " } }, bright = st.title.isNotBlank(), size = 15)
+                Spacer(Modifier.height(8.dp))
+                val info = listOf(st.status, if (st.kbps > 0) "${st.codec} ${st.kbps}k" else st.codec)
+                    .filter { it.isNotBlank() }.joinToString(" · ")
+                OledLine(info.uppercase().ifBlank { " " }, bright = false, size = 11)
+                Spacer(Modifier.height(8.dp))
+                // hangerő-csík, mint a kijelzőn
+                Row(Modifier.fillMaxWidth().height(6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    for (i in 1..15) {
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight().background(
+                                if (!st.muted && i <= st.vol) Amber else Amber.copy(alpha = 0.12f)
+                            )
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                val cur = vm.radioStations.getOrNull(st.idx)?.let { vm.radioToStation(it) }
+                IconButton(onClick = { cur?.let { vm.toggleFav(it) } }, enabled = cur != null) {
+                    val fav = cur != null && vm.isFav(cur)
+                    Icon(
+                        if (fav) Icons.Filled.Star else Icons.Filled.StarBorder, contentDescription = "Kedvencekhez",
+                        tint = if (fav) Amber else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 FilledTonalIconButton(onClick = { vm.radioPrev() }, modifier = Modifier.size(52.dp)) {
                     Icon(Icons.Filled.SkipPrevious, contentDescription = "Előző")
                 }
@@ -124,6 +165,12 @@ private fun NowOnRadio(vm: MainViewModel, st: RadioState) {
                 Spacer(Modifier.width(16.dp))
                 FilledTonalIconButton(onClick = { vm.radioNext() }, modifier = Modifier.size(52.dp)) {
                     Icon(Icons.Filled.SkipNext, contentDescription = "Következő")
+                }
+                Spacer(Modifier.width(8.dp))
+                // a rádión szóló adó a telefonon is (pl. ha elindulsz otthonról)
+                IconButton(onClick = { cur?.let { vm.playOnPhone(it) } }, enabled = cur != null) {
+                    Icon(Icons.Filled.PhoneAndroid, contentDescription = "Lejátszás a telefonon",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
