@@ -42,7 +42,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---------- keresés ----------
     var query by mutableStateOf("")
-    var hungaryOnly by mutableStateOf(true)
+    var country by mutableStateOf(store.country)          // null = minden ország
+        private set
+    val countries = mutableStateListOf<Country>()
+    var countriesLoading by mutableStateOf(false)
+        private set
     var tag by mutableStateOf<String?>(null)
     val results = mutableStateListOf<Station>()
     var searching by mutableStateOf(false)
@@ -167,13 +171,31 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         searchJob?.cancel()
         searching = true
         searchError = null
-        val q = query; val cc = if (hungaryOnly) "HU" else null; val t = tag
+        val q = query; val cc = country; val t = tag
         searchJob = viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { rb.search(q, cc, t) }
             searching = false
             if (r == null) { searchError = "A rádiókereső nem érhető el. Van internet?"; return@launch }
             results.clear(); results.addAll(r)
             if (r.isEmpty()) searchError = "Nincs találat"
+        }
+    }
+
+    fun setCountryFilter(code: String?) {
+        country = code
+        store.country = code
+        search()
+    }
+
+    fun countryLabel(): String = country?.let { rb.countryName(it) } ?: "Minden ország"
+
+    fun loadCountries() {
+        if (countries.isNotEmpty() || countriesLoading) return
+        countriesLoading = true
+        viewModelScope.launch {
+            val l = withContext(Dispatchers.IO) { rb.countries() }
+            countriesLoading = false
+            if (l == null) toast = "Az országlista nem tölthető le" else { countries.clear(); countries.addAll(l) }
         }
     }
 

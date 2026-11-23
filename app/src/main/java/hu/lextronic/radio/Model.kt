@@ -14,9 +14,11 @@ data class Station(
     val country: String = "",
     val codec: String = "",
     val bitrate: Int = 0,
+    val ok: Boolean = true,          // a radio-browser legutóbbi ellenőrzésekor elérhető volt-e
 ) {
     fun subtitle(): String {
         val p = mutableListOf<String>()
+        if (!ok) p += "⚠ lehet, hogy nem elérhető"
         if (country.isNotBlank()) p += country
         if (codec.isNotBlank()) p += if (bitrate > 0) "$codec $bitrate kbps" else codec
         val t = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.take(3)
@@ -44,6 +46,9 @@ data class Station(
         )
     }
 }
+
+/** Ország a szűrőhöz (kód + magyar név + állomásszám). */
+data class Country(val code: String, val name: String, val count: Int)
 
 /** A rádió /api/state válasza (ami nekünk kell belőle). */
 data class RadioState(
@@ -81,6 +86,11 @@ class Store(ctx: Context) {
         val a = JSONArray(); list.forEach { a.put(it.toJson()) }
         sp.edit().putString("favs", a.toString()).apply()
     }
+
+    /** A keresés országa: kétbetűs kód, vagy null = minden ország. */
+    var country: String?
+        get() = sp.getString("country", "HU").takeIf { it != "ALL" }
+        set(v) { sp.edit().putString("country", v ?: "ALL").apply() }
 
     var last: Station?
         get() = sp.getString("last", null)?.let { try { Station.fromJson(JSONObject(it)) } catch (e: Exception) { null } }

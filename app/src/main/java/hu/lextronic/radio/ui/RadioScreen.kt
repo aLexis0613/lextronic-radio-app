@@ -17,8 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -119,7 +119,7 @@ private fun NowOnRadio(vm: MainViewModel, st: RadioState) {
                 }
                 Spacer(Modifier.width(16.dp))
                 FilledIconButton(onClick = { vm.radioMute() }, modifier = Modifier.size(60.dp)) {
-                    Icon(if (st.muted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp, contentDescription = "Némítás")
+                    Icon(if (st.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Némítás")
                 }
                 Spacer(Modifier.width(16.dp))
                 FilledTonalIconButton(onClick = { vm.radioNext() }, modifier = Modifier.size(52.dp)) {

@@ -2,6 +2,8 @@ package hu.lextronic.radio
 
 import org.json.JSONArray
 import java.net.InetAddress
+import java.text.Collator
+import java.util.Locale
 
 /** Ingyenes, nyílt netrádió-adatbázis: https://www.radio-browser.info */
 class RadioBrowser {
@@ -29,14 +31,21 @@ class RadioBrowser {
         return null
     }
 
-    /** Keresés; ha minden üres, a legnépszerűbbeket adja. null = hálózati hiba. */
+    /**
+     * Keresés; ha minden üres, a legnépszerűbbeket adja. null = hálózati hiba.
+     * Névre keresésnél a pontos egyezés kerül előre (pl. „RES” ne vesszen el az „Express”-ek között),
+     * és a legutóbb nem elérhetőnek jelölt állomásokat is mutatjuk (jelölve).
+     */
     fun search(name: String, countryCode: String?, tag: String?): List<Station>? {
-        val sb = StringBuilder("/json/stations/search?limit=100&hidebroken=true&order=clickcount&reverse=true")
-        if (name.isNotBlank()) sb.append("&name=").append(enc(name.trim()))
+        val byName = name.isNotBlank()
+        val sb = StringBuilder("/json/stations/search?order=clickcount&reverse=true")
+        sb.append("&limit=").append(if (byName) 400 else 150)
+        sb.append("&hidebroken=").append(!byName)
+        if (byName) sb.append("&name=").append(enc(name.trim()))
         if (!countryCode.isNullOrBlank()) sb.append("&countrycode=").append(countryCode)
         if (!tag.isNullOrBlank()) sb.append("&tag=").append(enc(tag))
         val txt = query(sb.toString()) ?: return null
-        return try {
+        val list = try {
             val a = JSONArray(txt)
             val seen = HashSet<String>()
             (0 until a.length()).mapNotNull { i ->
@@ -53,10 +62,48 @@ class RadioBrowser {
                     country = o.optString("countrycode"),
                     codec = o.optString("codec"),
                     bitrate = o.optInt("bitrate"),
+                    ok = o.optInt("lastcheckok", 1) == 1,
                 )
             }
+        } catch (e: Exception) { return null }
+        if (!byName) return list
+        // rangsor: pontos név > szóegyezés > eleje egyezik > tartalmazza; azon belül marad a népszerűség
+        val q = norm(name)
+        fun rank(s: Station): Int {
+            val n = norm(s.name)
+            val words = s.name.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+            return when {
+                n == q -> 0
+                words.any { it == q.lowercase() } -> 1
+                n.startsWith(q) -> 2
+                else -> 3
+            } * 2 + (if (s.ok) 0 else 1)
+        }
+        return list.withIndex().sortedWith(compareBy({ rank(it.value) }, { it.index })).map { it.value }.take(150)
+    }
+
+    private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+
+    /** Országok listája magyar névvel, ábécérendben. */
+    fun countries(): List<Country>? {
+        val txt = query("/json/countries?hidebroken=true") ?: return null
+        return try {
+            val hu = Locale("hu", "HU")
+            val a = JSONArray(txt)
+            val coll = Collator.getInstance(hu)
+            (0 until a.length()).mapNotNull { i ->
+                val o = a.getJSONObject(i)
+                val code = o.optString("iso_3166_1").uppercase()
+                val cnt = o.optInt("stationcount")
+                if (code.length != 2 || cnt <= 0) null
+                else Country(code, Locale("", code).getDisplayCountry(hu).ifBlank { o.optString("name") }, cnt)
+            }.groupBy { it.code }.map { (_, v) -> v.first().copy(count = v.sumOf { it.count }) }
+                .sortedWith { x, y -> coll.compare(x.name, y.name) }
         } catch (e: Exception) { null }
     }
+
+    fun countryName(code: String): String =
+        Locale("", code).getDisplayCountry(Locale("hu", "HU")).ifBlank { code }
 
     /** A radio-browser kéri, hogy jelezzük a lejátszást (ebből számolja a népszerűséget). */
     fun click(uuid: String) {
