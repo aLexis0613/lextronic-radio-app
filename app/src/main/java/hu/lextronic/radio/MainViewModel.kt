@@ -53,6 +53,26 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             return if (i > 0) t.substring(0, i).trim() to t.substring(i + 3).trim() else "" to t
         }
 
+    // ---------- helyi zene, sor, előzmények ----------
+    private var queue: List<Station> = emptyList()
+    val library = mutableStateListOf<Station>()
+    var libraryLoading by mutableStateOf(false)
+        private set
+    var libraryLoaded by mutableStateOf(false)
+        private set
+    var libraryQuery by mutableStateOf("")
+    val history = mutableStateListOf<Station>().apply { addAll(store.loadHistory()) }
+    var shuffle by mutableStateOf(false)
+        private set
+    var repeatMode by mutableStateOf(Player.REPEAT_MODE_OFF)
+        private set
+    var queuePos by mutableStateOf(0)
+        private set
+    var queueSize by mutableStateOf(0)
+        private set
+
+    val isLocal: Boolean get() = playing?.isLocal == true
+
     // ---------- hangszín ----------
     val eqGains = mutableStateListOf<Float>().apply { addAll(store.eqGains.toList()) }
     var eqOn by mutableStateOf(store.eqOn)
@@ -132,6 +152,15 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private fun syncFrom(p: Player) {
+        // helyi lejátszási sornál a lejátszó magától lép tovább: kövessük, melyik szám szól
+        val id = p.currentMediaItem?.mediaId
+        if (id != null && playing?.let { it.uuid.ifBlank { it.url } } != id) {
+            queue.firstOrNull { it.uuid.ifBlank { it.url } == id }?.let { setPlaying(it) }
+        }
+        queuePos = p.currentMediaItemIndex
+        queueSize = p.mediaItemCount
+        shuffle = p.shuffleModeEnabled
+        repeatMode = p.repeatMode
         isPlaying = p.isPlaying
         buffering = p.playbackState == Player.STATE_BUFFERING && p.playWhenReady
         if (p.playbackState == Player.STATE_READY) retries = 0
@@ -181,8 +210,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun playOnPhone(s: Station) {
         val c = controller ?: run { toast = "A lejátszó még nem állt készen"; return }
-        playing = s
-        store.last = s
+        if (s.isLocal) { playLocal(listOf(s), 0); return }
+        queue = listOf(s)
+        setPlaying(s)
         nowTitle = ""
         retries = 0
         val meta = MediaMetadata.Builder()
@@ -196,6 +226,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             .setUri(s.url)
             .setMediaMetadata(meta)
             .build()
+        c.shuffleModeEnabled = false
+        c.repeatMode = Player.REPEAT_MODE_OFF
         c.setMediaItem(item)
         c.prepare()
         c.play()
@@ -205,14 +237,114 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Élő adásnál a szünet = leállítás; folytatáskor friss streamet kérünk, nem a régi puffert. */
     fun togglePause() {
         val c = controller ?: return
-        if (c.isPlaying || (c.playWhenReady && c.playbackState != Player.STATE_IDLE)) {
+        if (isLocal) {
+            // helyi fájlnál sima szünet: a pozíció megmarad
+            if (c.isPlaying) c.pause() else { if (c.playbackState == Player.STATE_IDLE) c.prepare(); c.play() }
+        } else if (c.isPlaying || (c.playWhenReady && c.playbackState != Player.STATE_IDLE)) {
             c.pause(); c.stop()
         } else { retries = 0; c.prepare(); c.play() }
         syncFrom(c)
     }
 
+    private fun setPlaying(s: Station) {
+        playing = s
+        store.last = s
+        val i = history.indexOfFirst { it.url == s.url }
+        if (i >= 0) history.removeAt(i)
+        history.add(0, s)
+        while (history.size > 40) history.removeAt(history.size - 1)
+        store.saveHistory(history)
+    }
+
+    /** Helyi számok lejátszása; a sorba legfeljebb 500 szám kerül a kiválasztott körül. */
+    fun playLocal(list: List<Station>, index: Int) {
+        val c = controller ?: run { toast = "A lejátszó még nem állt készen"; return }
+        if (list.isEmpty()) return
+        val from = (index - 250).coerceAtLeast(0)
+        val to = (from + 500).coerceAtMost(list.size)
+        val win = list.subList(from, to).toList()
+        queue = win
+        setPlaying(list[index])
+        nowTitle = ""
+        val items = win.map { t ->
+            MediaItem.Builder()
+                .setMediaId(t.uuid)
+                .setUri(t.url)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(t.name)
+                        .setArtist(t.artist.ifBlank { null })
+                        .setAlbumTitle(t.album.ifBlank { null })
+                        .setArtworkUri(Uri.parse(t.favicon))
+                        .build()
+                ).build()
+        }
+        c.setMediaItems(items, index - from, 0L)
+        c.prepare()
+        c.play()
+    }
+
+    /** Bármelyik elem lejátszása (előzmény, keresési találat): helyi szám a könyvtárával együtt, vagy adó. */
+    fun playItem(s: Station) {
+        if (!s.isLocal) { playOnPhone(s); return }
+        val i = library.indexOfFirst { it.url == s.url }
+        if (i >= 0) playLocal(library, i) else playLocal(listOf(s), 0)
+    }
+
+    /** Előző/következő: helyi zenénél szám, rádiónál kedvenc állomás. */
+    fun skip(d: Int) {
+        val c = controller ?: return
+        if (isLocal) { if (d < 0) c.seekToPrevious() else c.seekToNext(); syncFrom(c) }
+        else playAdjacent(d)
+    }
+
+    fun position(): Long = controller?.currentPosition ?: 0L
+    fun duration(): Long = controller?.duration?.takeIf { it > 0 } ?: (playing?.durationMs ?: 0L)
+    fun seekTo(ms: Long) { controller?.seekTo(ms) }
+
+    fun toggleShuffle() { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled; syncFrom(it) } }
+
+    fun cycleRepeat() {
+        controller?.let {
+            it.repeatMode = when (it.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            syncFrom(it)
+        }
+    }
+
+    fun loadLibrary(force: Boolean = false) {
+        if (libraryLoading || (libraryLoaded && !force)) return
+        libraryLoading = true
+        viewModelScope.launch {
+            val l = withContext(Dispatchers.IO) { Library.load(app) }
+            library.clear(); library.addAll(l)
+            libraryLoading = false; libraryLoaded = true
+        }
+    }
+
+    fun filteredLibrary(q: String): List<Station> {
+        val f = q.trim().lowercase()
+        if (f.isEmpty()) return library
+        return library.filter { it.name.lowercase().contains(f) || it.artist.lowercase().contains(f) || it.album.lowercase().contains(f) }
+    }
+
+    /** A „Most szól” alsó paneljének keresője: előzmények, kedvencek és a helyi zenék. */
+    fun quickSearch(q: String): List<Station> {
+        val f = q.trim().lowercase()
+        if (f.isEmpty()) return history
+        val seen = HashSet<String>()
+        return (history + favorites + library).filter {
+            (it.name.lowercase().contains(f) || it.artist.lowercase().contains(f) || it.tags.lowercase().contains(f)) && seen.add(it.url)
+        }.take(60)
+    }
+
+    fun clearHistory() { history.clear(); store.saveHistory(history) }
+
     /** Előző/következő kedvenc (körbe). Ha a mostani nincs a kedvencek közt, az elsővel kezd. */
-    fun playAdjacent(d: Int) {
+    private fun playAdjacent(d: Int) {
         if (favorites.isEmpty()) { toast = "Nincs kedvenc állomás"; return }
         val i = favorites.indexOfFirst { it.url == playing?.url }
         val j = if (i < 0) 0 else (i + d + favorites.size) % favorites.size

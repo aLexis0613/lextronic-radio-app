@@ -1,19 +1,22 @@
 # Lextronic Rádió – Android app
 
-Ingyenes, reklám nélküli netrádió-kereső és a Lextronic rádió távirányítója.
-
-## Fordítás (Android Studio)
-1. Android Studio → **File → Open** → ezt a mappát (LextronicRadio) válaszd ki.
-2. Várd meg a Gradle-szinkront (első alkalommal letölti a függőségeket, pár perc).
-3. **Build → Build App Bundle(s) / APK(s) → Build APK(s)**.
-4. Az APK: `app/build/outputs/apk/debug/app-debug.apk` → telefonra másolás, telepítés
-   (a telefon rákérdez az „ismeretlen forrás” engedélyre).
-   Vagy USB-kábellel, bekapcsolt USB-hibakereséssel: zöld ▶ gomb, és rögtön fel is teszi.
+Ingyenes, reklám nélküli netrádió- és zenelejátszó, valamint a saját építésű **Lextronic** ESP32-S3 internetrádió távirányítója.
 
 ## Mit tud
-- **Keresés**: a radio-browser.info nyílt adatbázisában (~50 000 állomás), név, „Csak magyar”, műfaj szerint.
-- **Kedvencek**: a telefonon tárolva, úton is működik.
-- **Háttérlejátszás**: értesítés, lezárási képernyő, fülhallgató-gombok; kihúzott fülhallgatónál megáll.
-- **Rádió fül** (otthon, ugyanazon a WiFi-n): magától megtalálja a lextronic.local-t (mDNS),
-  látszik, mi szól, hangerő, némítás, léptetés, a rádió állomáslistája.
-- Bármelyik állomás **„Rádióra”** gombbal (hangszóró-ikon): meghallgatás a rádión vagy mentés a listájába.
+- **Netrádió-kereső** a nyílt [radio-browser.info](https://www.radio-browser.info) adatbázisból (~50 000 állomás): név, ország, műfaj szerint.
+- **Kedvencek** a telefonon – úton, mobilneten is.
+- **Helyi zenék** a telefon tárhelyéről: kereshető lista, keverés, ismétlés, előző/következő, pozíciócsúszka.
+- **„Most szól” képernyő**: borító/logó, spektrum (saját FFT, mikrofon-engedély nélkül), SSD1322-kijelző stílusú
+  információs panel (ICY-számcím), vezérlők, alul a legutóbb játszottak kis keresővel.
+- **5 sávos hangszínszabályzó** előbeállításokkal.
+- **Háttérlejátszás**: értesítés, lezárási képernyő, fülhallgató-gombok.
+- **Rádió fül** (otthon, WiFi-n): magától megtalálja a `lextronic.local`-t; mi szól, hangerő, léptetés, állomáslista,
+  és bármelyik adó átküldhető a rádióra (meghallgatás vagy mentés).
+- Energiatakarékos: mobilneten nem keresi a rádiót, háttérben nem kérdez le semmit, AMOLED-fekete felület.
+
+## Letöltés
+A legfrissebb APK mindig a **Releases → latest** alatt található (GitHub Actions fordítja minden módosítás után).
+
+## Fordítás
+Android Studio → *File → Open* → ez a mappa → várd meg a Gradle-szinkront → ▶ Run.
+(Kotlin, Jetpack Compose, Media3/ExoPlayer, Coil; minSdk 26, targetSdk 35.)

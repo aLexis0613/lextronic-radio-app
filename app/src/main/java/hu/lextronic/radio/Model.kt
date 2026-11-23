@@ -15,8 +15,16 @@ data class Station(
     val codec: String = "",
     val bitrate: Int = 0,
     val ok: Boolean = true,          // a radio-browser legutóbbi ellenőrzésekor elérhető volt-e
+    // helyi zenefájlnál:
+    val artist: String = "",
+    val album: String = "",
+    val durationMs: Long = 0,
 ) {
+    /** Helyi zeneszám (a telefon tárhelyéről), nem netrádió. */
+    val isLocal: Boolean get() = uuid.startsWith("local:")
+
     fun subtitle(): String {
+        if (isLocal) return listOf(artist, album).filter { it.isNotBlank() && it != "<unknown>" }.joinToString(" · ")
         val p = mutableListOf<String>()
         if (!ok) p += "⚠ lehet, hogy nem elérhető"
         if (country.isNotBlank()) p += country
@@ -32,6 +40,7 @@ data class Station(
     fun toJson(): JSONObject = JSONObject()
         .put("uuid", uuid).put("name", name).put("url", url).put("favicon", favicon)
         .put("tags", tags).put("country", country).put("codec", codec).put("bitrate", bitrate)
+        .put("artist", artist).put("album", album).put("dur", durationMs)
 
     companion object {
         fun fromJson(o: JSONObject) = Station(
@@ -43,6 +52,9 @@ data class Station(
             country = o.optString("country"),
             codec = o.optString("codec"),
             bitrate = o.optInt("bitrate"),
+            artist = o.optString("artist"),
+            album = o.optString("album"),
+            durationMs = o.optLong("dur"),
         )
     }
 }
@@ -100,6 +112,16 @@ class Store(ctx: Context) {
     var eqOn: Boolean
         get() = sp.getBoolean("eqOn", false)
         set(v) { sp.edit().putBoolean("eqOn", v).apply() }
+
+    fun loadHistory(): List<Station> = try {
+        val a = JSONArray(sp.getString("history", "[]"))
+        (0 until a.length()).map { Station.fromJson(a.getJSONObject(it)) }
+    } catch (e: Exception) { emptyList() }
+
+    fun saveHistory(list: List<Station>) {
+        val a = JSONArray(); list.forEach { a.put(it.toJson()) }
+        sp.edit().putString("history", a.toString()).apply()
+    }
 
     var last: Station?
         get() = sp.getString("last", null)?.let { try { Station.fromJson(JSONObject(it)) } catch (e: Exception) { null } }

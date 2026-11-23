@@ -59,7 +59,7 @@ fun StationLogo(url: String, size: Int = 44) {
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        if (url.startsWith("http")) {
+        if (url.startsWith("http") || url.startsWith("content")) {
             AsyncImage(
                 model = url, contentDescription = null,
                 modifier = Modifier.size(size.dp), contentScale = ContentScale.Crop,
@@ -109,7 +109,7 @@ fun StationRow(
 /** „Rádióra” gomb: meghallgatás vagy mentés a Lextronic rádión. Csak akkor látszik, ha a rádió elérhető. */
 @Composable
 fun SendToRadioButton(vm: MainViewModel, s: Station) {
-    if (!vm.radioOnline) return
+    if (!vm.radioOnline || s.isLocal) return
     var menuOpen by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { menuOpen = true }) {
@@ -216,7 +216,7 @@ fun BigLogo(url: String, size: Int) {
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
-        if (url.startsWith("http")) {
+        if (url.startsWith("http") || url.startsWith("content")) {
             AsyncImage(
                 model = url, contentDescription = null,
                 modifier = Modifier.size(size.dp), contentScale = ContentScale.Fit,

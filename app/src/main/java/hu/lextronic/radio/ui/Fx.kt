@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
  * Csak addig számolunk FFT-t, amíg ez látszik.
  */
 @Composable
-fun Spectrum(playing: Boolean, modifier: Modifier = Modifier) {
+fun Spectrum(playing: Boolean, modifier: Modifier = Modifier, height: Int = 90) {
     val n = AudioFx.BANDS
     val bars = remember { FloatArray(n) }
     val peaks = remember { FloatArray(n) }
@@ -76,7 +76,7 @@ fun Spectrum(playing: Boolean, modifier: Modifier = Modifier) {
 
     val top = Color(0xFFFFDE7A)
     val bottom = Color(0xFF6E5A26)
-    Canvas(modifier.fillMaxWidth().height(90.dp)) {
+    Canvas(modifier.fillMaxWidth().height(height.dp)) {
         if (frame < 0L) return@Canvas      // a képkocka-számláló olvasása miatt rajzol újra minden képkockánál
         val gap = 3.dp.toPx()
         val w = (size.width - gap * (n - 1)) / n

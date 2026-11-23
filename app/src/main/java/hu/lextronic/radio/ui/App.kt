@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
@@ -80,6 +82,10 @@ fun LextronicApp(vm: MainViewModel) {
                         selected = tab == 2, onClick = { tab = 2 },
                         icon = { Icon(Icons.Filled.Star, null) }, label = { Text("Kedvencek") }
                     )
+                    NavigationBarItem(
+                        selected = tab == 3, onClick = { tab = 3 },
+                        icon = { Icon(Icons.Filled.LibraryMusic, null) }, label = { Text("Zene") }
+                    )
                 }
             }
         }
@@ -88,7 +94,8 @@ fun LextronicApp(vm: MainViewModel) {
             when (tab) {
                 0 -> RadioScreen(vm)
                 1 -> SearchScreen(vm)
-                else -> FavScreen(vm, onSearch = { tab = 1 })
+                2 -> FavScreen(vm, onSearch = { tab = 1 })
+                else -> MusicScreen(vm)
             }
         }
     }
@@ -120,6 +127,7 @@ fun MiniPlayer(vm: MainViewModel) {
             Text(s.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
             val sub = when {
                 vm.buffering -> "Pufferelés…"
+                s.isLocal -> s.subtitle().ifBlank { if (vm.isPlaying) "Lejátszás" else "Szünet" }
                 vm.nowTitle.isNotBlank() -> vm.nowTitle
                 vm.isPlaying -> "Szól a telefonon"
                 else -> "Megállítva"
@@ -130,7 +138,9 @@ fun MiniPlayer(vm: MainViewModel) {
                 color = if (vm.nowTitle.isNotBlank() && !vm.buffering) Amber else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = { vm.toggleFav(s) }) {
+        if (s.isLocal) {
+            IconButton(onClick = { vm.skip(+1) }) { Icon(Icons.Filled.SkipNext, contentDescription = "Következő szám") }
+        } else IconButton(onClick = { vm.toggleFav(s) }) {
             Icon(
                 if (fav) Icons.Filled.Star else Icons.Filled.StarBorder,
                 contentDescription = "Kedvenc",
