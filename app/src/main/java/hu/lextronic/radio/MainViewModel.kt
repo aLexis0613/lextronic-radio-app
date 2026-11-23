@@ -155,7 +155,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         // helyi lejátszási sornál a lejátszó magától lép tovább: kövessük, melyik szám szól
         val id = p.currentMediaItem?.mediaId
         if (id != null && playing?.let { it.uuid.ifBlank { it.url } } != id) {
-            queue.firstOrNull { it.uuid.ifBlank { it.url } == id }?.let { setPlaying(it) }
+            queue.firstOrNull { it.uuid.ifBlank { it.url } == id }?.let { markPlaying(it) }
         }
         queuePos = p.currentMediaItemIndex
         queueSize = p.mediaItemCount
@@ -212,7 +212,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val c = controller ?: run { toast = "A lejátszó még nem állt készen"; return }
         if (s.isLocal) { playLocal(listOf(s), 0); return }
         queue = listOf(s)
-        setPlaying(s)
+        markPlaying(s)
         nowTitle = ""
         retries = 0
         val meta = MediaMetadata.Builder()
@@ -246,7 +246,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         syncFrom(c)
     }
 
-    private fun setPlaying(s: Station) {
+    private fun markPlaying(s: Station) {
         playing = s
         store.last = s
         val i = history.indexOfFirst { it.url == s.url }
@@ -264,7 +264,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val to = (from + 500).coerceAtMost(list.size)
         val win = list.subList(from, to).toList()
         queue = win
-        setPlaying(list[index])
+        markPlaying(list[index])
         nowTitle = ""
         val items = win.map { t ->
             MediaItem.Builder()
