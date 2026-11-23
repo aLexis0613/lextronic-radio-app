@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -33,7 +34,7 @@ class PlaybackService : MediaSessionService() {
             .setDataSourceFactory(DefaultDataSource.Factory(this, http))
         // netrádióhoz nagyobb puffer: mobilneten kevesebb akadás
         val load = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 60_000, 2_500, 5_000)
+            .setBufferDurationsMs(20_000, 90_000, 2_500, 5_000)
             .build()
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(sources)
@@ -47,6 +48,16 @@ class PlaybackService : MediaSessionService() {
             )
             .setHandleAudioBecomingNoisy(true)          // fülhallgató kihúzásakor megáll
             .setWakeMode(C.WAKE_MODE_NETWORK)          // lezárt képernyőnél is fut a WiFi/mobilnet
+            .build()
+
+        // hardveres (DSP) dekódolás, ha a telefon tudja: a processzor közben alhat -> kevesebb fogyasztás.
+        // Ha a telefon vagy a formátum nem támogatja, az ExoPlayer magától a normál dekódolást használja.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setAudioOffloadPreferences(
+                TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                    .build()
+            )
             .build()
 
         val open = PendingIntent.getActivity(

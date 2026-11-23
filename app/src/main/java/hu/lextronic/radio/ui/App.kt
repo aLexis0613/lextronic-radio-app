@@ -44,6 +44,7 @@ import hu.lextronic.radio.MainViewModel
 fun LextronicApp(vm: MainViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(if (vm.favorites.isEmpty()) 1 else 2) }
     val snack = remember { SnackbarHostState() }
+    LaunchedEffect(tab) { vm.radioTabVisible = tab == 0; vm.kick() }
     LaunchedEffect(vm.toast) {
         vm.toast?.let { snack.showSnackbar(it); vm.toast = null }
     }

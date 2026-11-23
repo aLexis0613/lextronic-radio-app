@@ -2,6 +2,9 @@ package hu.lextronic.radio
 
 import android.app.Application
 import android.content.ComponentName
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -69,6 +72,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var searchingRadio by mutableStateOf(false)
         private set
     @Volatile var foreground = true
+    /** A Rádió fül látszik-e: csak akkor kérdezzük 2 mp-enként, egyébként ritkán. */
+    @Volatile var radioTabVisible = false
+    private val cm = app.getSystemService(ConnectivityManager::class.java)
+    private val netCb = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { kick() }
+        override fun onLost(network: Network) { kick() }
+    }
     @Volatile private var kicked = false
     private var lastLv = -1
 
@@ -118,10 +128,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) { toast = "A lejátszó nem indult el" }
         }, ContextCompat.getMainExecutor(app))
 
+        try { cm.registerDefaultNetworkCallback(netCb) } catch (e: Exception) { }
         radioLoop()
     }
 
+    /** A rádiót csak WiFi-n (vagy Etherneten) keressük — mobilneten fölösleges és akkut eszik. */
+    private fun onLocalNet(): Boolean {
+        val c = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
     override fun onCleared() {
+        try { cm.unregisterNetworkCallback(netCb) } catch (e: Exception) { }
         controller?.removeListener(listener)
         controller?.release()
         super.onCleared()
@@ -244,6 +262,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         var fails = 0
         while (isActive) {
             if (!foreground) { delay(1000); continue }
+            if (!onLocalNet()) {
+                radioHost = null; radioState = null; searchingRadio = false
+                radioStatus = "Nincs WiFi – a rádió otthon, WiFi-n érhető el"
+                waitOrKick(60_000)          // hálózatváltáskor a callback úgyis felébreszt
+                continue
+            }
             val h = radioHost
             if (h == null) {
                 searchingRadio = true
@@ -254,7 +278,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                     radioHost = f; store.host = f; radioStatus = ""; lastLv = -1; fails = 0
                 } else {
                     radioStatus = "A rádió nem található ezen a hálózaton"
-                    waitOrKick(20_000)
+                    waitOrKick(if (radioTabVisible) 20_000 else 120_000)
                 }
                 continue
             }
@@ -270,7 +294,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 if (l != null) { radioStations.clear(); radioStations.addAll(l); lastLv = st.listVer }
             }
             radioState = st
-            waitOrKick(2000)
+            waitOrKick(if (radioTabVisible) 2000 else 30_000)
         }
     }
 
