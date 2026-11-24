@@ -13,20 +13,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # teljes előzmény: a versionCode a commitok számából jön
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Aláíró kulcs
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/lx.jks"
+            echo "LX_KEYSTORE_FILE=$RUNNER_TEMP/lx.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Nincs KEYSTORE_BASE64 secret — debug kulccsal írom alá, az app nem fog tudni frissülni"
+          fi
       - name: APK fordítása
+        env:
+          LX_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          LX_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          LX_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk LextronicRadio.apk
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk LextronicRadio.apk
+      # az app ebből látja, van-e újabb verzió (ugyanaz a képlet, mint az app/build.gradle.kts-ben)
+      - name: Verzióinfó
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          COUNT=$(git rev-list --count HEAD)
+          jq -n --argjson code $((100 + COUNT)) --arg name "1.6.$COUNT" --arg notes "$MSG" \
+            '{versionCode: $code, versionName: $name, notes: $notes}' > version.json
+          cat version.json
       - uses: actions/upload-artifact@v4
         with:
           name: LextronicRadio
-          path: LextronicRadio.apk
+          path: |
+            LextronicRadio.apk
+            version.json
       # mindig a legfrissebb APK a „latest” kiadásban -> telefonról egy kattintással letölthető
       - name: Kiadás frissítése
         env:
@@ -34,7 +61,7 @@ jobs:
           MSG: ${{ github.event.head_commit.message }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest LextronicRadio.apk \
+          gh release create latest LextronicRadio.apk version.json \
             --title "Legfrissebb build ($(date +'%Y-%m-%d %H:%M'))" \
             --notes "Commit: ${GITHUB_SHA::7} — $MSG" \
             --prerelease

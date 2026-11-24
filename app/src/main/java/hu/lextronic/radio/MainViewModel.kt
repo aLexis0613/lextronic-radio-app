@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
@@ -133,6 +134,15 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---------- üzenetsáv ----------
     var toast by mutableStateOf<String?>(null)
+
+    // ---------- frissítés a GitHubról ----------
+    /** Elérhető újabb verzió (ilyenkor látszik a frissítési ablak), vagy null. */
+    var update by mutableStateOf<UpdateInfo?>(null)
+        private set
+    /** Letöltés állapota 0..100, vagy -1, ha nem tölt. */
+    var updateProgress by mutableStateOf(-1)
+        private set
+    private var updateChecked = false
 
     private val listener = object : Player.Listener {
         // minden változásnál a lejátszó teljes állapotát átvesszük (megbízhatóbb, mint az egyes események)
@@ -511,5 +521,58 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             }
             kick()
         }
+    }
+
+    // ---------- frissítés ----------
+    /** Induláskor egyszer megnézi, van-e újabb verzió a GitHubon. */
+    fun checkUpdate() {
+        if (updateChecked) return
+        updateChecked = true
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) { Updater.fetchInfo() } ?: return@launch
+            if (info.versionCode > Updater.installedVersion(app)) update = info
+        }
+    }
+
+    fun dismissUpdate() { if (updateProgress < 0) update = null }
+
+    fun installUpdate() {
+        if (updateProgress >= 0) return
+        if (!Updater.canInstall(app)) {
+            Updater.openInstallPermission(app)
+            toast = "Engedélyezd a telepítést, majd koppints újra a Frissítésre"
+            return
+        }
+        viewModelScope.launch {
+            updateProgress = 0
+            val apk = withContext(Dispatchers.IO) { Updater.download(app) { updateProgress = it } }
+            updateProgress = -1
+            when {
+                apk == null -> toast = "Nem sikerült letölteni a frissítést"
+                !Updater.signatureMatches(app, apk) -> {
+                    update = null
+                    toast = "Az új verzió más kulccsal van aláírva: előbb töröld a régit (kedvenceket mentsd ki!)"
+                }
+                else -> { update = null; Updater.install(app, apk) }
+            }
+        }
+    }
+
+    // ---------- kedvencek mentése / visszatöltése ----------
+    fun exportFavs(): String {
+        val a = JSONArray(); favorites.forEach { a.put(it.toJson()) }
+        return a.toString()
+    }
+
+    /** JSON-lista (az exportFavs kimenete) beolvasása; a meglévőkhöz adja, duplikáció nélkül. */
+    fun importFavs(text: String?) {
+        val list = try {
+            val a = JSONArray(text.orEmpty().trim())
+            (0 until a.length()).map { Station.fromJson(a.getJSONObject(it)) }.filter { it.url.isNotBlank() }
+        } catch (e: Exception) { toast = "A vágólapon nincs érvényes kedvenclista"; return }
+        var n = 0
+        list.forEach { if (!isFav(it)) { favorites.add(it); n++ } }
+        store.saveFavs(favorites)
+        toast = if (n > 0) "$n állomás importálva" else "Nem volt új állomás a listában"
     }
 }

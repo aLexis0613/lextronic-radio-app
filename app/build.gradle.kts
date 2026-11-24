@@ -1,8 +1,25 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Verziószám a git commitok számából: minden push után nő, így az app észreveszi a frissítést.
+// (A CI ugyanezzel a képlettel írja a version.json-t — ha itt változtatsz, ott is: .github/workflows/build.yml)
+val gitCommits: Int = try {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toInt()
+} catch (e: Exception) { 0 }
+
+// Saját aláíró kulcs: helyben a keystore.properties-ből (NEM kerül a gitbe), a CI-ban környezeti
+// változókból (GitHub Secrets). Ha egyik sincs, marad a debug kulcs.
+val ks = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun ksValue(key: String, env: String): String? = ks.getProperty(key) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+val ksFile = ksValue("storeFile", "LX_KEYSTORE_FILE")
 
 android {
     namespace = "hu.lextronic.radio"
@@ -12,16 +29,28 @@ android {
         applicationId = "hu.lextronic.radio"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.6"
+        versionCode = 100 + gitCommits
+        versionName = "1.6.$gitCommits"
     }
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            // saját használatra: a debug kulccsal írjuk alá, így a release APK is rögtön telepíthető
-            signingConfig = signingConfigs.getByName("debug")
+    if (ksFile != null) signingConfigs {
+        create("lx") {
+            storeFile = file(ksFile!!)
+            storePassword = ksValue("storePassword", "LX_KEYSTORE_PASSWORD")
+            keyAlias = ksValue("keyAlias", "LX_KEY_ALIAS")
+            keyPassword = ksValue("keyPassword", "LX_KEY_PASSWORD")
         }
     }
+    buildTypes {
+        // a debug (▶ Run) is a saját kulccsal: így a telefonon lévő app a GitHubról is frissíthető
+        debug {
+            if (ksFile != null) signingConfig = signingConfigs.getByName("lx")
+        }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName(if (ksFile != null) "lx" else "debug")
+        }
+    }
+    lint { checkReleaseBuilds = false }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

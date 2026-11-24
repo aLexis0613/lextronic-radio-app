@@ -28,6 +28,6 @@ class MainActivity : ComponentActivity() {
         setContent { LextronicTheme { LextronicApp(vm) } }
     }
 
-    override fun onStart() { super.onStart(); vm.foreground = true; vm.kick() }
+    override fun onStart() { super.onStart(); vm.foreground = true; vm.kick(); vm.checkUpdate() }
     override fun onStop() { vm.foreground = false; super.onStop() }
 }

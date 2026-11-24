@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,7 +29,10 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -106,6 +110,31 @@ fun LextronicApp(vm: MainViewModel) {
         exit = slideOutVertically { it } + fadeOut()
     ) { FullPlayer(vm) }
     }
+    UpdateDialog(vm)
+}
+
+/** „Új verzió érhető el” ablak; a frissítés gombra letölti és átadja a telepítőnek. */
+@Composable
+private fun UpdateDialog(vm: MainViewModel) {
+    val u = vm.update ?: return
+    val loading = vm.updateProgress >= 0
+    AlertDialog(
+        onDismissRequest = { vm.dismissUpdate() },
+        title = { Text("Új verzió: ${u.versionName}") },
+        text = {
+            Column {
+                if (u.notes.isNotBlank()) Text(u.notes, style = MaterialTheme.typography.bodyMedium)
+                if (loading) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("Letöltés… ${vm.updateProgress}%", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(progress = { vm.updateProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = !loading, onClick = { vm.installUpdate() }) { Text("Frissítés") } },
+        dismissButton = { TextButton(enabled = !loading, onClick = { vm.dismissUpdate() }) { Text("Később") } }
+    )
 }
 
 /** A telefonon szóló állomás, a navigációs sáv fölött. Koppintásra vagy felfelé húzásra nyílik a teljes lejátszó. */

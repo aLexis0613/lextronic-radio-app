@@ -4,3 +4,7 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+# aláíró kulcs és jelszavai — SOHA ne kerüljön a nyilvános repóba
+keystore.properties
+*.jks
+*.keystore
