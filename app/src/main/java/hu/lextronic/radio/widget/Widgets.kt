@@ -44,7 +44,6 @@ import androidx.glance.text.FontFamily
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import hu.lextronic.radio.AudioFx
 import hu.lextronic.radio.MainActivity
 import hu.lextronic.radio.R
@@ -58,7 +57,8 @@ private val OledBg = Color(0xFF0A0800)
 private val TextMain = Color(0xFFF2F2F2)
 private val TextDim = Color(0xFFBBBBBB)
 
-private fun cp(c: Color) = ColorProvider(c)
+// a nyilvános (nappali/éjszakai) változat; a widget mindkét módban ugyanazt a színt használja
+private fun cp(c: Color) = androidx.glance.color.ColorProvider(day = c, night = c)
 
 /** A widget állapota a Glance Preferences-ből (LxWidgets írja). */
 private class WState(p: Preferences) {
