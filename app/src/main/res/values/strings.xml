@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Lextronic Rádió</string>
+    <string name="widget_compact_name">Lextronic – kompakt</string>
+    <string name="widget_compact_desc">Egy sor: adó, számcím, lejátszás, következő kedvenc</string>
+    <string name="widget_panel_name">Lextronic – OLED panel</string>
+    <string name="widget_panel_desc">Kijelző-stílus a hangszínszabályzó értékeivel és kedvenc-léptetéssel</string>
 </resources>

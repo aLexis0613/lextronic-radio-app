@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -256,13 +257,16 @@ private fun SeekBar(vm: MainViewModel) {
     }
 }
 
-/** „Legutóbb játszott” panel a képernyő alján; a nagyítóval kereső nyílik (előzmények, kedvencek, helyi zenék). */
+/**
+ * „Legutóbbi” panel a képernyő alján: rádiózás közben a legutóbbi adók, helyi zenénél a legutóbbi
+ * zenék (külön listák). A nagyítóval kereső nyílik, szintén csak az éppen használt fajtában.
+ */
 @Composable
 private fun RecentPanel(vm: MainViewModel, modifier: Modifier) {
     var searching by remember { mutableStateOf(false) }
     var q by remember { mutableStateOf("") }
     val focus = LocalFocusManager.current
-    val list: List<Station> = if (searching) vm.quickSearch(q) else vm.history
+    val list: List<Station> = if (searching) vm.quickSearch(q) else vm.recentList
     val shape = RoundedCornerShape(16.dp)
 
     Column(
@@ -280,7 +284,7 @@ private fun RecentPanel(vm: MainViewModel, modifier: Modifier) {
                     modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                     decorationBox = { inner ->
                         if (q.isEmpty()) Text(
-                            "Keresés: előzmények, kedvencek, zenék…", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            if (vm.isLocal) "Keresés a zenék között…" else "Keresés: adók, kedvencek…", color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium
                         )
                         inner()
@@ -289,7 +293,7 @@ private fun RecentPanel(vm: MainViewModel, modifier: Modifier) {
                 IconButton(onClick = { searching = false; q = ""; focus.clearFocus() }) { Icon(Icons.Filled.Close, "Bezárás") }
             } else {
                 Text(
-                    "LEGUTÓBB JÁTSZOTT", style = MaterialTheme.typography.labelMedium, color = Amber.copy(alpha = 0.8f),
+                    if (vm.isLocal) "LEGUTÓBBI ZENÉK" else "LEGUTÓBBI ADÓK", style = MaterialTheme.typography.labelMedium, color = Amber.copy(alpha = 0.8f),
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = { searching = true }) { Icon(Icons.Filled.Search, "Keresés") }
@@ -303,11 +307,15 @@ private fun RecentPanel(vm: MainViewModel, modifier: Modifier) {
             )
         } else {
             LazyColumn(Modifier.fillMaxWidth()) {
-                items(list, key = { it.url }) { t ->
+                itemsIndexed(list, key = { _, t -> t.url }) { i, t ->
                     val active = vm.playing?.url == t.url
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable { focus.clearFocus(); vm.playItem(t) }
+                            .clickable {
+                                focus.clearFocus()
+                                // a legutóbbi zenék közül választva maga a lista lesz a lejátszási sor
+                                if (t.isLocal && !searching) vm.playLocal(list.toList(), i) else vm.playItem(t)
+                            }
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

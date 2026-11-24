@@ -19,6 +19,7 @@ data class Station(
     val artist: String = "",
     val album: String = "",
     val durationMs: Long = 0,
+    val track: Int = 0,              // sorszám az albumon (nem mentjük, a könyvtárból jön)
 ) {
     /** Helyi zeneszám (a telefon tárhelyéről), nem netrádió. */
     val isLocal: Boolean get() = uuid.startsWith("local:")
@@ -113,14 +114,15 @@ class Store(ctx: Context) {
         get() = sp.getBoolean("eqOn", false)
         set(v) { sp.edit().putBoolean("eqOn", v).apply() }
 
-    fun loadHistory(): List<Station> = try {
-        val a = JSONArray(sp.getString("history", "[]"))
+    /** Előzmények: „history” = netrádiók, „historyMusic” = helyi zenék. */
+    fun loadHistory(key: String = "history"): List<Station> = try {
+        val a = JSONArray(sp.getString(key, "[]"))
         (0 until a.length()).map { Station.fromJson(a.getJSONObject(it)) }
     } catch (e: Exception) { emptyList() }
 
-    fun saveHistory(list: List<Station>) {
+    fun saveHistory(list: List<Station>, key: String = "history") {
         val a = JSONArray(); list.forEach { a.put(it.toJson()) }
-        sp.edit().putString("history", a.toString()).apply()
+        sp.edit().putString(key, a.toString()).apply()
     }
 
     var last: Station?

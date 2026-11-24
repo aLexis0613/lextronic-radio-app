@@ -26,6 +26,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import android.content.SharedPreferences
+import hu.lextronic.radio.widget.LxWidgets
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
@@ -62,7 +64,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var libraryLoaded by mutableStateOf(false)
         private set
     var libraryQuery by mutableStateOf("")
-    val history = mutableStateListOf<Station>().apply { addAll(store.loadHistory()) }
+    // előzmények külön: netrádiók és helyi zenék (a régi közös listát szétválogatjuk)
+    private val oldHistory = store.loadHistory()
+    val radioHistory = mutableStateListOf<Station>().apply { addAll(oldHistory.filter { !it.isLocal }) }
+    val musicHistory = mutableStateListOf<Station>().apply {
+        addAll(store.loadHistory("historyMusic").ifEmpty { oldHistory.filter { it.isLocal } })
+    }
+
+    // ---------- Zene fül: Számok / Albumok / Előadók / Legutóbbi ----------
+    /** 0 = számok, 1 = albumok, 2 = előadók, 3 = legutóbbi */
+    var musicTab by mutableStateOf(0)
+    /** Megnyitott album vagy előadó (a számlistája látszik), vagy null. */
+    var musicGroup by mutableStateOf<MusicGroup?>(null)
+    var albums by mutableStateOf<List<MusicGroup>>(emptyList())
+        private set
+    var artists by mutableStateOf<List<MusicGroup>>(emptyList())
+        private set
     var shuffle by mutableStateOf(false)
         private set
     var repeatMode by mutableStateOf(Player.REPEAT_MODE_OFF)
@@ -82,6 +99,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun applyEq() {
         AudioFx.setGains(eqGains.toFloatArray(), eqOn)
         store.eqGains = eqGains.toFloatArray(); store.eqOn = eqOn
+        LxWidgets.refresh(app)
     }
 
     fun setEqBand(i: Int, db: Float) { eqGains[i] = db; if (!eqOn) eqOn = true; applyEq() }
@@ -110,6 +128,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---------- kedvencek ----------
     val favorites = mutableStateListOf<Station>().apply { addAll(store.loadFavs()) }
+    /** A widget csillag gombja is módosíthatja a kedvenceket: ilyenkor újratöltjük a listát. */
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "favs") {
+            val f = store.loadFavs()
+            if (f.map { it.url } != favorites.map { it.url }) { favorites.clear(); favorites.addAll(f) }
+        }
+    }
 
     // ---------- a Lextronic rádió ----------
     var radioHost by mutableStateOf<String?>(null)
@@ -169,7 +194,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         // helyi lejátszási sornál a lejátszó magától lép tovább: kövessük, melyik szám szól
         val id = p.currentMediaItem?.mediaId
         if (id != null && playing?.let { it.uuid.ifBlank { it.url } } != id) {
-            queue.firstOrNull { it.uuid.ifBlank { it.url } == id }?.let { markPlaying(it) }
+            // a widgetről indított adó nincs az app sorában: az utoljára indítottból / kedvencekből keressük
+            (queue.firstOrNull { it.uuid.ifBlank { it.url } == id }
+                ?: store.last?.takeIf { it.uuid.ifBlank { it.url } == id }
+                ?: favorites.firstOrNull { it.uuid.ifBlank { it.url } == id })?.let { markPlaying(it) }
         }
         queuePos = p.currentMediaItemIndex
         queueSize = p.mediaItemCount
@@ -184,6 +212,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     init {
         AudioFx.setGains(eqGains.toFloatArray(), eqOn)
+        app.getSharedPreferences("lextronic", android.content.Context.MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(prefsListener)
         val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
         val future = MediaController.Builder(app, token).buildAsync()
         future.addListener({
@@ -214,6 +244,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        app.getSharedPreferences("lextronic", android.content.Context.MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(prefsListener)
         try { cm.unregisterNetworkCallback(netCb) } catch (e: Exception) { }
         controller?.removeListener(listener)
         controller?.release()
@@ -229,17 +261,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         markPlaying(s)
         nowTitle = ""
         retries = 0
-        val meta = MediaMetadata.Builder()
-            .setTitle(s.name)
-            .setArtist(s.name)
-            .setStation(s.name)
-            .apply { if (s.favicon.startsWith("http")) setArtworkUri(Uri.parse(s.favicon)) }
-            .build()
-        val item = MediaItem.Builder()
-            .setMediaId(s.uuid.ifBlank { s.url })
-            .setUri(s.url)
-            .setMediaMetadata(meta)
-            .build()
+        val item = s.toRadioItem()
         c.shuffleModeEnabled = false
         c.repeatMode = Player.REPEAT_MODE_OFF
         c.setMediaItem(item)
@@ -263,19 +285,23 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun markPlaying(s: Station) {
         playing = s
         store.last = s
-        val i = history.indexOfFirst { it.url == s.url }
-        if (i >= 0) history.removeAt(i)
-        history.add(0, s)
-        while (history.size > 40) history.removeAt(history.size - 1)
-        store.saveHistory(history)
+        val h = if (s.isLocal) musicHistory else radioHistory
+        val i = h.indexOfFirst { it.url == s.url }
+        if (i >= 0) h.removeAt(i)
+        h.add(0, s)
+        while (h.size > (if (s.isLocal) 50 else 40)) h.removeAt(h.size - 1)
+        if (s.isLocal) store.saveHistory(musicHistory, "historyMusic") else store.saveHistory(radioHistory)
     }
 
-    /** Helyi számok lejátszása; a sorba legfeljebb 500 szám kerül a kiválasztott körül. */
+    /**
+     * Helyi számok lejátszása: a lejátszási sor mindig az a lista, ahonnan a számot választották
+     * (összes szám, album, előadó, legutóbbiak, keresési találat). Legfeljebb 1000 szám a választott körül.
+     */
     fun playLocal(list: List<Station>, index: Int) {
         val c = controller ?: run { toast = "A lejátszó még nem állt készen"; return }
         if (list.isEmpty()) return
-        val from = (index - 250).coerceAtLeast(0)
-        val to = (from + 500).coerceAtMost(list.size)
+        val from = (index - 500).coerceAtLeast(0)
+        val to = (from + 1000).coerceAtMost(list.size)
         val win = list.subList(from, to).toList()
         queue = win
         markPlaying(list[index])
@@ -335,6 +361,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val l = withContext(Dispatchers.IO) { Library.load(app) }
             library.clear(); library.addAll(l)
+            buildGroups(l)
             libraryLoading = false; libraryLoaded = true
         }
     }
@@ -345,17 +372,45 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         return library.filter { it.name.lowercase().contains(f) || it.artist.lowercase().contains(f) || it.album.lowercase().contains(f) }
     }
 
-    /** A „Most szól” alsó paneljének keresője: előzmények, kedvencek és a helyi zenék. */
+    /** A „Most szól” alsó panelje: rádiózás közben az adók, helyi zenénél a zenék előzményei. */
+    val recentList: List<Station> get() = if (isLocal) musicHistory else radioHistory
+
+    /** A „Most szól” paneljének keresője — mindig csak az éppen használt fajtában (adók vagy zenék). */
     fun quickSearch(q: String): List<Station> {
         val f = q.trim().lowercase()
-        if (f.isEmpty()) return history
+        if (f.isEmpty()) return recentList
         val seen = HashSet<String>()
-        return (history + favorites + library).filter {
+        val pool = if (isLocal) musicHistory + library else radioHistory + favorites
+        return pool.filter {
             (it.name.lowercase().contains(f) || it.artist.lowercase().contains(f) || it.tags.lowercase().contains(f)) && seen.add(it.url)
         }.take(60)
     }
 
-    fun clearHistory() { history.clear(); store.saveHistory(history) }
+    /** Albumok és előadók összeállítása a könyvtárból (betöltéskor egyszer). */
+    private fun buildGroups(l: List<Station>) {
+        val byTrack = compareBy<Station>({ it.track }, { it.name.lowercase() })
+        albums = l.groupBy { it.favicon }.map { (key, ts) ->
+            val tracks = ts.sortedWith(byTrack)
+            val who = ts.map { it.artist }.filter { it.isNotBlank() }.distinct()
+            MusicGroup(
+                key = key,
+                title = ts.first().album.ifBlank { "Ismeretlen album" },
+                subtitle = (if (who.size == 1) who[0] else if (who.isEmpty()) "Ismeretlen előadó" else "Különböző előadók") +
+                    " · ${tracks.size} szám",
+                art = key, tracks = tracks
+            )
+        }.sortedBy { it.title.lowercase() }
+        artists = l.groupBy { it.artist.ifBlank { "Ismeretlen előadó" }.lowercase() }.map { (key, ts) ->
+            val tracks = ts.sortedWith(compareBy<Station>({ it.album.lowercase() }, { it.track }, { it.name.lowercase() }))
+            val nAlbums = ts.map { it.favicon }.distinct().size
+            MusicGroup(
+                key = key,
+                title = ts.first().artist.ifBlank { "Ismeretlen előadó" },
+                subtitle = "$nAlbums album · ${tracks.size} szám",
+                art = tracks.first().favicon, tracks = tracks
+            )
+        }.sortedBy { it.title.lowercase() }
+    }
 
     /** Előző/következő kedvenc (körbe). Ha a mostani nincs a kedvencek közt, az elsővel kezd. */
     private fun playAdjacent(d: Int) {
@@ -415,14 +470,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val i = favorites.indexOfFirst { it.url == s.url }
         if (i >= 0) { favorites.removeAt(i); toast = "Törölve a kedvencek közül" }
         else { favorites.add(s); toast = "Hozzáadva a kedvencekhez" }
-        store.saveFavs(favorites)
+        store.saveFavs(favorites); LxWidgets.refresh(app)
     }
 
     fun moveFav(i: Int, d: Int) {
         val j = i + d
         if (i !in favorites.indices || j !in favorites.indices) return
         val t = favorites[i]; favorites[i] = favorites[j]; favorites[j] = t
-        store.saveFavs(favorites)
+        store.saveFavs(favorites); LxWidgets.refresh(app)
     }
 
     fun radioToStation(r: RadioStation) = Station(uuid = "", name = r.name, url = r.url, tags = r.genre)
@@ -592,7 +647,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) { toast = "A vágólapon nincs érvényes kedvenclista"; return }
         var n = 0
         list.forEach { if (!isFav(it)) { favorites.add(it); n++ } }
-        store.saveFavs(favorites)
+        store.saveFavs(favorites); LxWidgets.refresh(app)
         toast = if (n > 0) "$n állomás importálva" else "Nem volt új állomás a listában"
     }
 }
+
+/** Egy album vagy előadó a Zene fülön, a hozzá tartozó (már sorba rendezett) számokkal. */
+data class MusicGroup(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val art: String,
+    val tracks: List<Station>,
+)

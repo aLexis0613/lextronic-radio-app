@@ -28,6 +28,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import hu.lextronic.radio.widget.LxWidgets
 
 /**
  * Háttérlejátszás: a hang akkor is szól, ha az app nincs előtérben vagy a képernyő le van zárva.
@@ -41,6 +42,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // a hangszínszabályzó beállításai akkor is érvényesek, ha az appot nem nyitották meg
+        // (pl. a widgetről vagy az értesítésből indul a lejátszás)
+        Store(this).let { AudioFx.setGains(it.eqGains, it.eqOn) }
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(UA)
             .setAllowCrossProtocolRedirects(true)      // sok állomás http -> https-re irányít át
@@ -98,6 +102,17 @@ class PlaybackService : MediaSessionService() {
         })
 
         focus = RadioFocus(this, player)
+        // a kezdőképernyő-widgetek követik a lejátszót
+        player.addListener(object : Player.Listener {
+            override fun onEvents(p: Player, events: Player.Events) {
+                if (events.containsAny(
+                        Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                        Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED,
+                        Player.EVENT_MEDIA_ITEM_TRANSITION
+                    )
+                ) LxWidgets.onPlayer(this@PlaybackService, p)
+            }
+        })
         live = LiveReconnect(this, player)
 
         val open = PendingIntent.getActivity(
@@ -115,6 +130,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        LxWidgets.onStopped(this)
         focus?.release()
         focus = null
         live?.release()

@@ -80,5 +80,9 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // kezdőképernyő-widgetek
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }

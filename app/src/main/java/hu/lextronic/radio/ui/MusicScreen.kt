@@ -43,11 +43,25 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import hu.lextronic.radio.MainViewModel
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.ui.graphics.Color
+import hu.lextronic.radio.MusicGroup
+import hu.lextronic.radio.Station
 
 private val AUDIO_PERMISSION =
     if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
 
-/** A telefonon tárolt zenék: kereshető lista, koppintásra innen indul a lejátszási sor. */
+/**
+ * A telefonon tárolt zenék, fülekkel: Számok, Albumok, Előadók, Legutóbbi (max. 50).
+ * Amelyik listából választasz, az lesz a lejátszási sor (album → az album, összes szám → mind).
+ */
 @Composable
 fun MusicScreen(vm: MainViewModel) {
     val ctx = LocalContext.current
@@ -74,13 +88,59 @@ fun MusicScreen(vm: MainViewModel) {
         return
     }
 
-    val list = vm.filteredLibrary(vm.libraryQuery)
+    val group = vm.musicGroup
+    BackHandler(enabled = group != null) { vm.musicGroup = null }
+
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (group != null) {
+            GroupHeader(vm, group)
+            TrackList(vm, group.tracks, numbered = vm.musicTab == 1) { t ->
+                if (vm.musicTab == 1) t.artist else t.album
+            }
+            return@Column
+        }
+
+        TabRow(
+            selectedTabIndex = vm.musicTab,
+            containerColor = Color.Transparent,
+            contentColor = Amber,
+        ) {
+            listOf("Számok", "Albumok", "Előadók", "Legutóbbi").forEachIndexed { i, label ->
+                Tab(
+                    selected = vm.musicTab == i,
+                    onClick = { vm.musicTab = i; focus.clearFocus() },
+                    text = { Text(label, maxLines = 1) },
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        val q = vm.libraryQuery.trim().lowercase()
+        fun Station.hit() = q.isEmpty() || name.lowercase().contains(q) || artist.lowercase().contains(q) || album.lowercase().contains(q)
+        fun MusicGroup.hit() = q.isEmpty() || title.lowercase().contains(q) || subtitle.lowercase().contains(q)
+
+        val tracks: List<Station> = when (vm.musicTab) {
+            0 -> vm.filteredLibrary(vm.libraryQuery)
+            3 -> vm.musicHistory.filter { it.hit() }
+            else -> emptyList()
+        }
+        val groups: List<MusicGroup> = when (vm.musicTab) {
+            1 -> vm.albums.filter { it.hit() }
+            2 -> vm.artists.filter { it.hit() }
+            else -> emptyList()
+        }
+        // a keverés gomb mindig azt keveri, ami épp látszik (csoportoknál azok összes számát)
+        val shuffleList = if (vm.musicTab == 1 || vm.musicTab == 2) groups.flatMap { it.tracks } else tracks
+
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = vm.libraryQuery,
                 onValueChange = { vm.libraryQuery = it },
-                placeholder = { Text("Szám, előadó, album…") },
+                placeholder = {
+                    Text(
+                        when (vm.musicTab) { 1 -> "Album keresése…"; 2 -> "Előadó keresése…"; else -> "Szám, előadó, album…" }
+                    )
+                },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
                     if (vm.libraryQuery.isNotEmpty()) IconButton(onClick = { vm.libraryQuery = "" }) {
@@ -91,19 +151,24 @@ fun MusicScreen(vm: MainViewModel) {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier.weight(1f)
             )
-            // keverve lejátssza az egész (szűrt) listát
             IconButton(onClick = {
                 focus.clearFocus()
-                if (list.isNotEmpty()) {
-                    vm.playLocal(list, (list.indices).random())
+                if (shuffleList.isNotEmpty()) {
+                    vm.playLocal(shuffleList, shuffleList.indices.random())
                     if (!vm.shuffle) vm.toggleShuffle()
                 }
-            }, enabled = list.isNotEmpty()) {
+            }, enabled = shuffleList.isNotEmpty()) {
                 Icon(Icons.Filled.Shuffle, contentDescription = "Keverés", tint = Amber)
             }
         }
         Text(
-            if (vm.libraryLoading) "Zenék beolvasása…" else "${list.size} szám",
+            when {
+                vm.libraryLoading -> "Zenék beolvasása…"
+                vm.musicTab == 1 -> "${groups.size} album"
+                vm.musicTab == 2 -> "${groups.size} előadó"
+                vm.musicTab == 3 -> "${tracks.size} legutóbb játszott szám (max. 50)"
+                else -> "${tracks.size} szám"
+            },
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 4.dp)
         )
@@ -114,24 +179,83 @@ fun MusicScreen(vm: MainViewModel) {
                     "Nem találtam zenét a telefonon.", color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.Center).padding(24.dp)
                 )
-                else -> LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(list, key = { _, t -> t.url }) { i, t ->
+                vm.musicTab == 3 && vm.musicHistory.isEmpty() -> Text(
+                    "Még nem hallgattál zenét a telefonról.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp)
+                )
+                vm.musicTab == 1 || vm.musicTab == 2 -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(groups, key = { it.key }) { g ->
                         StationRow(
-                            logo = t.favicon,
-                            title = t.name,
-                            subtitle = t.subtitle(),
-                            active = vm.playing?.url == t.url,
-                            onClick = { focus.clearFocus(); vm.playLocal(list, i) },
-                            trailing = {
-                                Text(
-                                    fmtTime(t.durationMs), style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                )
-                            }
+                            logo = g.art, title = g.title, subtitle = g.subtitle,
+                            onClick = { focus.clearFocus(); vm.musicGroup = g },
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         )
                     }
                 }
+                else -> TrackList(vm, tracks)
+            }
+        }
+    }
+}
+
+/** Számlista; koppintásra pontosan ez a lista lesz a lejátszási sor. */
+@Composable
+private fun TrackList(
+    vm: MainViewModel,
+    list: List<Station>,
+    numbered: Boolean = false,
+    subtitle: (Station) -> String = { it.subtitle() },
+) {
+    val focus = LocalFocusManager.current
+    LazyColumn(Modifier.fillMaxSize()) {
+        itemsIndexed(list, key = { _, t -> t.url }) { i, t ->
+            val no = t.track % 1000
+            StationRow(
+                logo = t.favicon,
+                title = if (numbered && no > 0) "$no. ${t.name}" else t.name,
+                subtitle = subtitle(t),
+                active = vm.playing?.url == t.url,
+                onClick = { focus.clearFocus(); vm.playLocal(list.toList(), i) },
+                trailing = {
+                    Text(
+                        fmtTime(t.durationMs), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+            )
+        }
+    }
+}
+
+/** Megnyitott album / előadó fejléce: vissza, borító, cím, Lejátszás és Keverés. */
+@Composable
+private fun GroupHeader(vm: MainViewModel, g: MusicGroup) {
+    Column(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { vm.musicGroup = null }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Vissza")
+            }
+            StationLogo(g.art, 64)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(g.title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                Text(g.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.padding(start = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = {
+                if (vm.shuffle) vm.toggleShuffle()
+                vm.playLocal(g.tracks, 0)
+            }) {
+                Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Lejátszás")
+            }
+            OutlinedButton(onClick = {
+                vm.playLocal(g.tracks, g.tracks.indices.random())
+                if (!vm.shuffle) vm.toggleShuffle()
+            }) {
+                Icon(Icons.Filled.Shuffle, null, tint = Amber); Spacer(Modifier.width(6.dp)); Text("Keverés")
             }
         }
     }

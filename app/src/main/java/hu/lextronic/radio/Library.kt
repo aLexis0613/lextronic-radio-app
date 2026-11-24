@@ -18,6 +18,7 @@ object Library {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.TRACK,
         )
         try {
             ctx.contentResolver.query(
@@ -31,6 +32,7 @@ object Library {
                 val iAlbum = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                 val iAlbumId = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 val iDur = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                val iTrack = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
                 while (c.moveToNext()) {
                     val id = c.getLong(iId)
                     val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
@@ -43,6 +45,7 @@ object Library {
                         artist = c.getString(iArtist).orEmpty().takeIf { it != "<unknown>" }.orEmpty(),
                         album = c.getString(iAlbum).orEmpty(),
                         durationMs = c.getLong(iDur),
+                        track = c.getInt(iTrack),
                     )
                 }
             }
