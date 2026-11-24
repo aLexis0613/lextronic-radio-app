@@ -33,6 +33,12 @@ object Updater {
     fun installedVersion(ctx: Context): Long =
         PackageInfoCompat.getLongVersionCode(ctx.packageManager.getPackageInfo(ctx.packageName, 0))
 
+    fun installedVersionName(ctx: Context): String =
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
+
+    const val REPO_URL = "https://github.com/aLexis0613/lextronic-radio-app"
+    const val RELEASE_URL = "$REPO_URL/releases/tag/latest"
+
     /** Hálózati szálon hívandó. Hiba esetén null (nincs net, épp újraépül a kiadás stb.). */
     fun fetchInfo(): UpdateInfo? {
         val s = httpGet(INFO_URL, 8000) ?: return null

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -30,6 +31,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
@@ -47,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,7 +62,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import hu.lextronic.radio.MainViewModel
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LextronicApp(vm: MainViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(if (vm.favorites.isEmpty()) 1 else 2) }
@@ -65,11 +74,32 @@ fun LextronicApp(vm: MainViewModel) {
         vm.toast?.let { snack.showSnackbar(it); vm.toast = null }
     }
 
-    BackHandler(enabled = vm.playerOpen) { vm.playerOpen = false }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val closeDrawer: () -> Unit = { scope.launch { drawer.close() } }
 
+    BackHandler(enabled = vm.playerOpen) { vm.playerOpen = false }
+    BackHandler(enabled = drawer.isOpen && !vm.playerOpen) { closeDrawer() }
+
+    ModalNavigationDrawer(
+        drawerState = drawer,
+        // a teljes képernyős lejátszó fölött ne nyíljon ki húzásra
+        gesturesEnabled = !vm.playerOpen || drawer.isOpen,
+        drawerContent = { AppDrawer(vm, closeDrawer) }
+    ) {
     Box(Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Lextronic Rádió", maxLines = 1) },
+                navigationIcon = {
+                    IconButton(onClick = { scope.launch { drawer.open() } }) {
+                        Icon(Icons.Filled.Menu, contentDescription = "Menü")
+                    }
+                }
+            )
+        },
         bottomBar = {
             Column {
                 MiniPlayer(vm)
@@ -109,6 +139,7 @@ fun LextronicApp(vm: MainViewModel) {
         enter = slideInVertically { it } + fadeIn(),
         exit = slideOutVertically { it } + fadeOut()
     ) { FullPlayer(vm) }
+    }
     }
     UpdateDialog(vm)
 }

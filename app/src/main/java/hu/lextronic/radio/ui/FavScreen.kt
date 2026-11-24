@@ -98,19 +98,8 @@ private fun FavHeader(vm: MainViewModel) {
         Box {
             IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Kedvencek mentése") }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(text = { Text("Másolás vágólapra") }, onClick = {
-                    menuOpen = false
-                    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    cm.setPrimaryClip(ClipData.newPlainText("Lextronic kedvencek", vm.exportFavs()))
-                    vm.toast = "Kedvencek a vágólapon"
-                })
-                DropdownMenuItem(text = { Text("Megosztás / mentés…") }, onClick = {
-                    menuOpen = false
-                    val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                        .putExtra(Intent.EXTRA_SUBJECT, "Lextronic kedvencek")
-                        .putExtra(Intent.EXTRA_TEXT, vm.exportFavs())
-                    ctx.startActivity(Intent.createChooser(send, "Kedvencek mentése"))
-                })
+                DropdownMenuItem(text = { Text("Másolás vágólapra") }, onClick = { menuOpen = false; copyFavs(ctx, vm) })
+                DropdownMenuItem(text = { Text("Megosztás / mentés…") }, onClick = { menuOpen = false; shareFavs(ctx, vm) })
                 DropdownMenuItem(text = { Text("Importálás vágólapról") }, onClick = {
                     menuOpen = false
                     vm.importFavs(clipText(ctx))
@@ -120,7 +109,20 @@ private fun FavHeader(vm: MainViewModel) {
     }
 }
 
-private fun clipText(ctx: Context): String? {
+internal fun copyFavs(ctx: Context, vm: MainViewModel) {
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(ClipData.newPlainText("Lextronic kedvencek", vm.exportFavs()))
+    vm.toast = "Kedvencek a vágólapon"
+}
+
+internal fun shareFavs(ctx: Context, vm: MainViewModel) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+        .putExtra(Intent.EXTRA_SUBJECT, "Lextronic kedvencek")
+        .putExtra(Intent.EXTRA_TEXT, vm.exportFavs())
+    ctx.startActivity(Intent.createChooser(send, "Kedvencek mentése"))
+}
+
+internal fun clipText(ctx: Context): String? {
     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     return cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString()
 }

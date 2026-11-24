@@ -143,6 +143,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     var updateProgress by mutableStateOf(-1)
         private set
     private var updateChecked = false
+    /** Kézi frissítéskeresés folyamatban (az oldalsávban forog a jelző). */
+    var checkingUpdate by mutableStateOf(false)
+        private set
+    val versionName: String = Updater.installedVersionName(app)
 
     private val listener = object : Player.Listener {
         // minden változásnál a lejátszó teljes állapotát átvesszük (megbízhatóbb, mint az egyes események)
@@ -531,6 +535,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val info = withContext(Dispatchers.IO) { Updater.fetchInfo() } ?: return@launch
             if (info.versionCode > Updater.installedVersion(app)) update = info
+        }
+    }
+
+    /** Az oldalsáv „Frissítés keresése” gombja: akkor is szól, ha nincs újabb. */
+    fun checkUpdateManual() {
+        if (checkingUpdate) return
+        updateChecked = true
+        checkingUpdate = true
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) { Updater.fetchInfo() }
+            checkingUpdate = false
+            when {
+                info == null -> toast = "Nem sikerült elérni a GitHubot"
+                info.versionCode > Updater.installedVersion(app) -> update = info
+                else -> toast = "Ez a legfrissebb verzió ($versionName)"
+            }
         }
     }
 

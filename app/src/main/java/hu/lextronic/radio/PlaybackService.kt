@@ -5,8 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -34,6 +37,7 @@ import androidx.media3.session.MediaSessionService
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private var focus: RadioFocus? = null
+    private var live: LiveReconnect? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -94,6 +98,7 @@ class PlaybackService : MediaSessionService() {
         })
 
         focus = RadioFocus(this, player)
+        live = LiveReconnect(this, player)
 
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
@@ -112,10 +117,80 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         focus?.release()
         focus = null
+        live?.release()
+        live = null
         session?.run { player.release(); release() }
         session = null
         super.onDestroy()
     }
+}
+
+/**
+ * Élő adás frissen tartása (csak netrádiónál, helyi zenénél nem):
+ *  - hosszabb szünet után folytatáskor újracsatlakozik, így nem a pufferből, percekkel lemaradva
+ *    szól tovább (és nem akad el azon, hogy a szerver közben bontotta a kapcsolatot);
+ *  - ha a telefon hálózatot vált (WiFi <-> mobilnet), azonnal újracsatlakozik az új hálózaton,
+ *    nem várja meg, hogy a régi kapcsolat elhaljon. Hiba után ugyanígy újraindítja a lejátszást.
+ */
+@OptIn(UnstableApi::class)
+private class LiveReconnect(context: Context, private val player: ExoPlayer) {
+    private val cm = context.getSystemService(ConnectivityManager::class.java)
+    private val main = Handler(Looper.getMainLooper())
+    private var pausedAt = 0L
+    private var network: Network? = null
+
+    private fun isLive(): Boolean {
+        val scheme = player.currentMediaItem?.localConfiguration?.uri?.scheme?.lowercase()
+        return scheme == "http" || scheme == "https"
+    }
+
+    private fun reconnect() {
+        if (!isLive()) return
+        player.stop()
+        player.prepare()
+    }
+
+    private val playerListener = object : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady) { pausedAt = SystemClock.elapsedRealtime(); return }
+            val paused = pausedAt
+            pausedAt = 0L
+            if (paused > 0 && SystemClock.elapsedRealtime() - paused > RESUME_FRESH_MS &&
+                player.playbackState != Player.STATE_IDLE) reconnect()
+        }
+        override fun onPlaybackStateChanged(state: Int) {
+            // leállított (stop) lejátszó úgyis frissen csatlakozik újra: nincs mit pótolni
+            if (state == Player.STATE_IDLE) pausedAt = 0L
+        }
+    }
+
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(n: Network) {
+            val old = network
+            network = n
+            // az első hívás a feliratkozáskor jön a meglévő hálózatra: az nem váltás
+            if (old == null || old == n) return
+            if (!player.playWhenReady || player.mediaItemCount == 0) return
+            // kis késleltetés: váltáskor a DNS/útvonal még pár száz ms-ig rendeződik
+            main.removeCallbacks(netReconnect)
+            main.postDelayed(netReconnect, 800)
+        }
+    }
+    // hiba után (STATE_IDLE + playWhenReady) az új hálózaton magától is újraindul
+    private val netReconnect = Runnable { if (player.playWhenReady) reconnect() }
+
+    init {
+        player.addListener(playerListener)
+        try { cm.registerDefaultNetworkCallback(netCallback, main) } catch (e: Exception) { }
+    }
+
+    fun release() {
+        main.removeCallbacks(netReconnect)
+        player.removeListener(playerListener)
+        try { cm.unregisterNetworkCallback(netCallback) } catch (e: Exception) { }
+    }
+
+    companion object { const val RESUME_FRESH_MS = 20_000L }
 }
 
 /**

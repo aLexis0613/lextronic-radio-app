@@ -12,14 +12,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0          # teljes előzmény: a versionCode a commitok számából jön
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Aláíró kulcs
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -48,20 +48,29 @@ jobs:
           jq -n --argjson code $((100 + COUNT)) --arg name "1.6.$COUNT" --arg notes "$MSG" \
             '{versionCode: $code, versionName: $name, notes: $notes}' > version.json
           cat version.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: LextronicRadio
           path: |
             LextronicRadio.apk
             version.json
-      # mindig a legfrissebb APK a „latest” kiadásban -> telefonról egy kattintással letölthető
+      # mindig a legfrissebb APK a „latest” kiadásban -> telefonról egy kattintással letölthető.
+      # A kiadást nem töröljük újra, csak a fájlokat cseréljük: így nincs olyan pillanat, amikor
+      # a link vagy az appon belüli frissítés nem érné el. Előbb az APK, utána a version.json megy fel,
+      # hogy az app sose lásson olyan verziót, aminek az APK-ja még nincs fent.
       - name: Kiadás frissítése
         env:
           GH_TOKEN: ${{ github.token }}
           MSG: ${{ github.event.head_commit.message }}
         run: |
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest LextronicRadio.apk version.json \
-            --title "Legfrissebb build ($(date +'%Y-%m-%d %H:%M'))" \
-            --notes "Commit: ${GITHUB_SHA::7} — $MSG" \
-            --prerelease
+          TITLE="Legfrissebb build ($(TZ=Europe/Budapest date +'%Y-%m-%d %H:%M'))"
+          NOTES="Commit: ${GITHUB_SHA::7} — $MSG"
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest LextronicRadio.apk --clobber
+            gh release upload latest version.json --clobber
+            gh release edit latest --title "$TITLE" --notes "$NOTES" --prerelease
+          else
+            gh release create latest LextronicRadio.apk version.json --title "$TITLE" --notes "$NOTES" --prerelease
+          fi
