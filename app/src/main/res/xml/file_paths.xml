@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a letöltött frissítés (cache/update/) átadása a rendszer telepítőjének -->
+<paths>
+    <cache-path name="update" path="update/" />
+</paths>
